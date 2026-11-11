@@ -41,7 +41,7 @@ export default function view(ctx) {
     max = Math.max(0, depth - 420); z.jump(0);
     const bar = (side) => h('div', { class: 'st-bar', style: `width:${depth + 300}px; transform: translate3d(${side * x}px, ${-ch / 2 - 30}px, ${-(depth + 300) / 2 + 40}px) rotateY(90deg)` });
     // the sign has real depth: a stack of the same letters going back, bright chrome in front, dark steel behind
-    const letters = (text, tag) => h(tag, null, Array.from({ length: 10 }, (_, k) => h('i', { style: `--k:${k}`, 'aria-hidden': k ? 'true' : null }, text)));
+    const letters = (text, tag) => h(tag, null, Array.from({ length: 6 }, (_, k) => h('i', { style: `--k:${k}`, 'aria-hidden': k ? 'true' : null }, text)));
     signZ = -Math.min(depth * 0.3, 640); sign = h('div', { class: 'st-sign' }, letters('VITON13', 'span'), letters('STORE', 'em'));
     world.replaceChildren(h('div', { class: 'st-floor', style: `height:${depth + 1600}px` }), bar(-1), bar(1), sign, ...cards.map((c) => c.el));
     top.count(`${list.length} ${plural(list.length)}`); paint();

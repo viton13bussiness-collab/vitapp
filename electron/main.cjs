@@ -3,9 +3,9 @@ const { app, BrowserWindow, shell, session } = require('electron');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 
-// On Apple silicon with macOS 26 the default Metal graphics backend of this Electron crashes its GPU process the moment a page asks for WebGL,
-// and every 3D screen (Медицина, the cosmos) silently loses its canvas. The OpenGL backend runs on the same GPU and does not crash.
-if (process.platform === 'darwin') app.commandLine.appendSwitch('use-angle', process.env.VIT_ANGLE || 'gl');
+// Electron 42 crashed its GPU process on macOS 26 the moment a page asked for WebGL; the workaround (OpenGL backend) cost 80% of the frame rate.
+// Electron 45.1 runs WebGL on Metal without crashing, so the fast default stays. VIT_ANGLE=gl brings the old workaround back if a machine needs it.
+if (process.platform === 'darwin' && process.env.VIT_ANGLE) app.commandLine.appendSwitch('use-angle', process.env.VIT_ANGLE);
 app.setName('VITON13');
 
 const ROOT = path.join(__dirname, '..');

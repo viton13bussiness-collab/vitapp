@@ -2,7 +2,10 @@
 // when one hits a limit, runs out of balance or stops answering. A local model (Ollama) keeps VIT alive with no keys at all.
 import { getSetting, run, now } from './db.mjs';
 
-const PREF = ['qwen3:4b-instruct', 'qwen3', 'gemma3', 'llama3.3', 'llama3.2', 'llama3', 'mistral', 'phi4', 'phi'];
+// The strongest local model that fits this machine comes first: a 16 GB Mac runs an 8B model comfortably, and with one chat model loaded at a time it stays fast.
+const PREF = ['qwen3:14b', 'gemma3:12b', 'qwen3:8b', 'gemma3:4b', 'qwen3:4b-instruct', 'qwen3', 'gemma3', 'llama3.3', 'llama3.2', 'llama3', 'mistral', 'phi4', 'phi'];
+const RAM_GB = Math.round((await import('node:os')).totalmem() / 2 ** 30);
+const fitsHere = (name) => !/14b|12b/.test(name) || RAM_GB >= 24;
 const EMBED = ['bge-m3', 'nomic-embed-text', 'mxbai-embed', 'all-minilm'];
 const isEmbed = (n) => /embed|bge-|minilm/i.test(n);
 const cool = new Map();          // provider id → { until, reason }
@@ -23,7 +26,7 @@ export async function providers() {
   const url = (s.local?.url || process.env.OLLAMA_URL || 'http://127.0.0.1:11434').replace(/\/$/, '');
   const names = await localModels(url), chatNames = names.filter((n) => !isEmbed(n));
   const wanted = s.local?.model || process.env.VIT_LOCAL_MODEL;
-  const model = wanted && names.includes(wanted) ? wanted : PREF.map((p) => chatNames.find((n) => n.startsWith(p))).find(Boolean) || chatNames[0] || '';
+  const model = wanted && names.includes(wanted) ? wanted : PREF.map((p) => chatNames.find((n) => n.startsWith(p) && fitsHere(n))).find(Boolean) || chatNames[0] || '';
   P.push({ id: 'local', kind: 'ollama', name: 'Локальная модель', where: 'на этом компьютере', url, model, models: chatNames, ready: !!model, on: s.local?.on !== false });
   const cloud = (id, kind, name, base, key, model) => P.push({ id, kind, name, where: 'облако', base, key, model, ready: !!key, on: s[id]?.on !== false });
   cloud('anthropic', 'anthropic', 'Claude', 'https://api.anthropic.com/v1', s.anthropic?.key || process.env.ANTHROPIC_API_KEY || '', s.anthropic?.model || process.env.VIT_CLAUDE_MODEL || 'claude-haiku-5-5');
@@ -63,7 +66,7 @@ const post = (url, headers, body, signal) => fetch(url, { method: 'POST', header
 
 const CALL = {
   async ollama(p, o, think = false) {
-    const res = await post(p.url + '/api/chat', {}, { model: p.model, stream: true, keep_alive: '30m', ...(think === null ? {} : { think }), ...(o.json ? { format: 'json' } : {}),
+    const res = await post(p.url + '/api/chat', {}, { model: p.model, stream: true, keep_alive: '10m', ...(think === null ? {} : { think }), ...(o.json ? { format: 'json' } : {}),
       options: { num_predict: o.maxTokens, temperature: o.temperature, num_ctx: 8192 }, messages: withSystem(o) }, sig(o.signal, 180000));
     if (!res.ok) { const body = await res.text(); if (think !== null && /think/i.test(body)) return CALL.ollama(p, o, null); throw new HttpError(res.status, body); }
     let out = '';
@@ -123,7 +126,7 @@ export async function askJSON(opts) { try { return parseJSON((await chat({ ...op
 export async function embed(text) {
   const P = await providers(), loc = P[0], names = await localModels(loc.url);
   const model = EMBED.map((e) => names.find((n) => n.startsWith(e))).find(Boolean); if (!model) return null;
-  try { const r = await post(loc.url + '/api/embed', {}, { model, input: String(text).slice(0, 2000), keep_alive: '30m' }, AbortSignal.timeout(20000)); const v = (await r.json()).embeddings?.[0]; return v ? Float32Array.from(v) : null; }
+  try { const r = await post(loc.url + '/api/embed', {}, { model, input: String(text).slice(0, 2000), keep_alive: '10m' }, AbortSignal.timeout(20000)); const v = (await r.json()).embeddings?.[0]; return v ? Float32Array.from(v) : null; }
   catch { return null; }
 }
 

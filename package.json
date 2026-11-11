@@ -17,7 +17,7 @@
     "mac": "bash scripts/make-mac-app.sh"
   },
   "devDependencies": {
-    "electron": "42.5.0"
+    "electron": "45.1.0"
   },
   "license": "UNLICENSED",
   "private": true,

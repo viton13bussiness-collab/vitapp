@@ -17,13 +17,13 @@
 /* the sign: ten layers of the same letters stacked into the depth — chrome face, steel sides */
 .st-sign { position: absolute; left: 0; top: 0; translate: -50% -50%; text-align: center; white-space: nowrap; pointer-events: none; line-height: 0.86; transform-style: preserve-3d; --sx: 50%; }
 .st-sign span, .st-sign em { display: grid; font-style: normal; transform-style: preserve-3d; }
-.st-sign i { grid-area: 1 / 1; font-style: normal; font-weight: 800; letter-spacing: -0.04em; transform: translateZ(calc(var(--k) * -5px)); color: color-mix(in srgb, #20242a calc(100% - var(--k) * 4%), #6b7079); }
-.st-sign i:first-child { color: transparent; -webkit-text-stroke: 1px rgba(255, 255, 255, 0.55); filter: drop-shadow(0 16px 24px rgba(0, 0, 0, 0.35));
+.st-sign i { grid-area: 1 / 1; font-style: normal; font-weight: 800; letter-spacing: -0.04em; transform: translateZ(calc(var(--k) * -8px)); color: color-mix(in srgb, #20242a calc(100% - var(--k) * 7%), #6b7079); }
+.st-sign i:first-child { color: transparent; -webkit-text-stroke: 1px rgba(255, 255, 255, 0.55);
   background: linear-gradient(100deg, transparent 38%, rgba(255, 255, 255, 0.95) 50%, transparent 62%) var(--sx) 0 / 260% 100% no-repeat, linear-gradient(180deg, #ffffff 0%, #dfe3e8 18%, #868c95 46%, #f8fafc 52%, #b2b8c0 72%, #4a4f57 100%); -webkit-background-clip: text; background-clip: text; }
 .st-sign span { font-size: 132px; } .st-sign em { font-size: 60px; margin-top: 12px; } .st-sign em i { letter-spacing: 0.52em; margin-right: -0.52em; }
 
 /* things on the rail */
-.st-card { position: absolute; left: 0; top: 0; width: var(--st-cw); height: var(--st-ch); margin: calc(var(--st-ch) / -2) 0 0 calc(var(--st-cw) / -2); padding: 0; text-align: left; transition: opacity 0.5s var(--ease), filter 0.35s var(--ease); -webkit-box-reflect: below 12px linear-gradient(transparent 64%, rgba(0, 0, 0, 0.2)); backface-visibility: hidden; }
+.st-card { position: absolute; left: 0; top: 0; width: var(--st-cw); height: var(--st-ch); margin: calc(var(--st-ch) / -2) 0 0 calc(var(--st-cw) / -2); padding: 0; text-align: left; transition: opacity 0.5s var(--ease), filter 0.35s var(--ease); backface-visibility: hidden; }
 .st-hook { position: absolute; left: 50%; top: -30px; width: 2px; height: 30px; margin-left: -1px; background: linear-gradient(180deg, #e9ecef, #7a8088); border-radius: 1px; }
 .st-in { position: absolute; inset: 0; display: block; border-radius: 14px; overflow: hidden; background: var(--panel-solid); box-shadow: 0 22px 40px rgba(0, 0, 0, 0.34), inset 0 0 0 1px var(--panel-line); transition: transform 0.5s var(--spring), box-shadow 0.5s var(--ease); transform-origin: 50% 0; }
 .st-card:hover .st-in, .st-card:focus-visible .st-in { transform: translateY(-8px) scale(1.03); box-shadow: 0 34px 60px rgba(0, 0, 0, 0.42), inset 0 0 0 1px var(--soft2); }

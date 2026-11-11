@@ -196,7 +196,7 @@ function glOrb(THREE, canvas, { points = 14000, interactive, wheel = false, fit 
 
   function layout() {
     const cw = canvas.clientWidth, ch = canvas.clientHeight; if (!cw || !ch) return;                  // hidden: keep the last size
-    const dpr = Math.min(2, window.devicePixelRatio || 1), bw = Math.round(cw * dpr), bh = Math.round(ch * dpr);
+    const dpr = Math.min(1.5, window.devicePixelRatio || 1), bw = Math.round(cw * dpr), bh = Math.round(ch * dpr);                  // glow points: 1.5x is indistinguishable from 2x and a third cheaper
     if (bw !== canvas.width || bh !== canvas.height) renderer.setSize(bw, bh, false);
     W = cw; H = ch; camera.aspect = cw / ch; camera.updateProjectionMatrix();
     const now = interactive !== false && Math.min(cw, ch) >= 260;
@@ -229,7 +229,9 @@ function glOrb(THREE, canvas, { points = 14000, interactive, wheel = false, fit 
   ];
 
   function frame(ms) {
-    raf = requestAnimationFrame(frame); const dt = Math.min(0.05, (ms - last) / 1000 || 0.016); last = ms;
+    raf = requestAnimationFrame(frame);
+    if (!document.hasFocus() && ms - last < 32) return;                                              // window in the background: half the frame rate, half the battery
+    const dt = Math.min(0.05, (ms - last) / 1000 || 0.016); last = ms;
     if (!W) { layout(); if (!W) return; }
     const calm = reduce.matches, light = root.dataset.theme === 'aurora';
     speed += ((st === 'think' ? 3.4 : st === 'listen' ? 1.7 : st === 'speak' ? 1.5 : 1) - speed) * dt * 3; amp += (ampT - amp) * dt * 10;

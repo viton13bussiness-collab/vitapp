@@ -142,13 +142,13 @@ export default function view(ctx) {
 
   // ── scene ──
   let renderer; try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' }); } catch { return flatView(ctx, 'Упрощённый вид: 3D на этом устройстве не запускается'); }
-  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1)); renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.95;
+  renderer.setPixelRatio(Math.min(1.5, window.devicePixelRatio || 1)); renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.95;
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;
   const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(27, 1, 0.1, 30); camera.position.set(0.95, 0.68, 2.6);
   const controls = new OrbitControls(camera, canvas); controls.target.set(0, 0.53, 0); controls.enableDamping = true; controls.dampingFactor = 0.07; controls.enablePan = false; controls.rotateSpeed = 0.75;
   controls.minDistance = 1.25; controls.maxDistance = 4.4; controls.minPolarAngle = 0.95; controls.maxPolarAngle = 1.82; controls.autoRotate = true; controls.autoRotateSpeed = 0.7;
   const hemi = new THREE.HemisphereLight(0xcfdcff, 0x2b2622, 0.32), key = new THREE.DirectionalLight(0xfff1e2, 2.5), rim = new THREE.DirectionalLight(0x8fb6ff, 3.2), fill = new THREE.DirectionalLight(0xffd9c2, 0.35);
-  key.position.set(1.9, 2.3, 1.7); key.castShadow = true; key.shadow.mapSize.set(2048, 2048); key.shadow.bias = -0.0004; key.shadow.normalBias = 0.012; key.shadow.radius = 5;
+  key.position.set(1.9, 2.3, 1.7); key.castShadow = true; key.shadow.mapSize.set(1024, 1024); key.shadow.bias = -0.0004; key.shadow.normalBias = 0.012; key.shadow.radius = 5;
   Object.assign(key.shadow.camera, { left: -0.9, right: 0.9, top: 1.3, bottom: -0.3, near: 0.5, far: 7 }); key.target.position.set(0, 0.5, 0);
   rim.position.set(-1.8, 1.6, -2.2); fill.position.set(-1.6, 0.4, 1.4);
   const rig = new THREE.Group(); rig.add(key, key.target, rim, fill); scene.add(hemi, rig);                  // the lights turn with the camera: a studio turntable
@@ -244,7 +244,7 @@ export default function view(ctx) {
       async show(next, cnv, poster) { key = next; if (cur) { sc.remove(cur); cur = null; } r?.dispose(); r = null; target = cnv; if (!next) return;
         try { cache[next] ||= normalise((await gltf.loadAsync(`${BASE}/organs/${next}.glb`)).scene, mat, false, 1.08); } catch { return; }
         if (dead || key !== next || !cnv.isConnected) return;
-        try { r = new THREE.WebGLRenderer({ canvas: cnv, antialias: true, alpha: true }); } catch { r = null; return; } r.setPixelRatio(Math.min(2, window.devicePixelRatio || 1)); r.setSize(cnv.clientWidth || 112, cnv.clientHeight || 112, false); r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneMapping;
+        try { r = new THREE.WebGLRenderer({ canvas: cnv, antialias: true, alpha: true }); } catch { r = null; return; } r.setPixelRatio(Math.min(1.5, window.devicePixelRatio || 1)); r.setSize(cnv.clientWidth || 112, cnv.clientHeight || 112, false); r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneMapping;
         cur = cache[next]; sc.add(cur); poster?.classList.add('hide'); },
       frame(t) { if (r && cur && target?.isConnected) { cur.rotation.y = t * 0.6; r.render(sc, cam); } },
       dispose() { r?.dispose(); Object.values(cache).forEach(disposeTree); mat.dispose(); } };
@@ -252,6 +252,10 @@ export default function view(ctx) {
 
   // ── pointer: hover and click on the body itself ──
   const ptr = new THREE.Vector2(); let down = null, moveQueued = false, lastMove = null;
+  // Hover uses the zone points already projected to the screen each frame — a ray against the 100k-triangle body on every mouse move cost a quarter of a core.
+  const onScreen = new Map();
+  function zoneNear(e) { const r = canvas.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top; let best = null, bd = 70 * 70;
+    for (const z of ZONES) { const p = onScreen.get(z.key); if (!p) continue; const d = (p[0] - x) ** 2 + (p[1] - y) ** 2; if (d < bd) { bd = d; best = z; } } return best; }
   function zoneAt(e) {
     if (!body) return null; const r = canvas.getBoundingClientRect(); ptr.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
     ray.setFromCamera(ptr, camera); const hit = ray.intersectObject(body, true)[0]; if (!hit) return null;
@@ -262,7 +266,7 @@ export default function view(ctx) {
   canvas.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY, t: performance.now() }; });
   canvas.addEventListener('pointerup', (e) => { if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6 || performance.now() - down.t > 500) return; const z = zoneAt(e); if (z) select(z.key === picked?.key ? null : z); });
   canvas.addEventListener('pointermove', (e) => { if (e.buttons || e.pointerType === 'touch') return; lastMove = e; if (moveQueued) return; moveQueued = true;
-    requestAnimationFrame(() => { moveQueued = false; const z = zoneAt(lastMove); setHover(z); canvas.style.cursor = z ? 'pointer' : 'grab'; }); });
+    requestAnimationFrame(() => { moveQueued = false; const z = zoneNear(lastMove); setHover(z); canvas.style.cursor = z ? 'pointer' : 'grab'; }); });
   canvas.addEventListener('pointerleave', () => setHover(null));
 
   // ── frame ──
@@ -284,7 +288,8 @@ export default function view(ctx) {
     renderer.render(scene, camera);
     for (const z of ZONES) { const an = anchors.get(z.key), dot = dots.get(z.key); if (!an) { dot.style.opacity = 0; continue; }
       tmp.copy(an.mark).project(camera); const facing = an.normal.dot(new THREE.Vector3().copy(camera.position).sub(an.mark).normalize());
-      dot.style.transform = `translate(${((tmp.x + 1) / 2) * W}px, ${((1 - tmp.y) / 2) * H}px)`; dot.style.opacity = facing > 0.12 ? 1 : 0; dot.style.pointerEvents = facing > 0.12 ? 'auto' : 'none'; }
+      const sx = ((tmp.x + 1) / 2) * W, sy = ((1 - tmp.y) / 2) * H; if (facing > 0.12) onScreen.set(z.key, [sx, sy]); else onScreen.delete(z.key);
+      dot.style.transform = `translate(${sx}px, ${sy}px)`; dot.style.opacity = facing > 0.12 ? 1 : 0; dot.style.pointerEvents = facing > 0.12 ? 'auto' : 'none'; }
     organ?.frame(now / 1000);
   }
   const onKey = (e) => { if (e.key === 'Escape' && picked) select(null); }; document.addEventListener('keydown', onKey);
