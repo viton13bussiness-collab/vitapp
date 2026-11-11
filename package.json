@@ -1,6 +1,6 @@
 {
   "name": "vit",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "VIT — персональный ИИ-агент VITON13 OS. Не чат-бот, который отвечает, а агент, который выполняет.",
   "type": "module",
   "main": "electron/main.cjs",

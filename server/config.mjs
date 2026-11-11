@@ -9,7 +9,7 @@ if (fs.existsSync(envFile)) for (const line of fs.readFileSync(envFile, 'utf8').
   const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/);
   if (m && process.env[m[1]] === undefined) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
 }
-export const VERSION = '0.1.0';
+export const VERSION = '0.2.0';
 const arg = (name) => process.argv.find((a) => a.startsWith(`--${name}=`))?.split('=').slice(1).join('=');
 export const PORT = +(arg('port') || process.env.VIT_PORT || 5313);
 export const HOST = process.env.VIT_HOST || '127.0.0.1';
