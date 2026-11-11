@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VIT · пульт команды</title>
+<link rel="icon" href="/icon.svg">
+<link rel="stylesheet" href="/app.css">
+<style>body { overflow: auto; } .wrap { max-width: 760px; margin: 0 auto; padding: 40px 20px 60px; } .acts { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="wordmark">VIT</div>
+  <h1 style="font-size:34px;letter-spacing:-.03em;margin:10px 0 6px">Пульт команды</h1>
+  <p style="color:var(--mute2);margin-bottom:24px">Сторона исполнителей. Смените статус заявки — человек увидит это в приложении в ту же секунду.</p>
+  <div id="list" class="stack"></div>
+</div>
+<script type="module">
+const list = document.getElementById('list');
+const el = (tag, props = {}, ...kids) => { const e = document.createElement(tag); for (const [k, v] of Object.entries(props)) k === 'class' ? (e.className = v) : k.startsWith('on') ? e.addEventListener(k.slice(2), v) : e.setAttribute(k, v); e.append(...kids.filter(Boolean)); return e; };
+async function load() {
+  const res = await fetch('/api/team/requests'); if (res.status === 401) return list.replaceChildren(el('div', { class: 'empty' }, 'Сначала войдите в VIT в этом браузере.'));
+  const d = await res.json();
+  list.replaceChildren(...(d.items.length ? d.items.map((r) => {
+    const note = el('input', { class: 'field sm', placeholder: 'Комментарий для человека', 'aria-label': 'Комментарий' });
+    const set = (status) => async () => { await fetch(`/api/team/requests/${r.id}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ status, note: note.value }) }); load(); };
+    return el('div', { class: 'card req' }, el('div', { class: 'req-top' }, el('div', { class: 'grow' }, el('b', {}, `№${r.id} · ${r.title}`), el('div', { class: 'hint' }, `от ${r.userName || 'человека'}`)), el('span', { class: 'tag ' + r.status }, r.statusName)),
+      r.detail && el('p', {}, r.detail), note,
+      el('div', { class: 'acts' }, ...Object.entries(d.statuses).filter(([id]) => id !== 'new' && id !== r.status).map(([id, name]) => el('button', { class: 'btn sm ' + (id === 'cancelled' ? 'danger' : id === 'done' ? '' : 'ghost'), onclick: set(id) }, name))));
+  }) : [el('div', { class: 'empty' }, 'Заявок пока нет.')]));
+}
+load(); new EventSource('/api/events?team=1').onmessage = (e) => { if (JSON.parse(e.data).type === 'request') load(); };
+</script>
+</body>
+</html>
