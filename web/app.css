@@ -6,8 +6,12 @@ body { background: var(--scene); background-color: var(--bg); transition: backgr
 #room { position: fixed; inset: -3%; z-index: 0; display: none; background: #0b0a09 url(/media/room.jpg) center / cover no-repeat; filter: brightness(0.5) saturate(0.85) blur(5px); transform: translate3d(var(--px, 0px), var(--py, 0px), 0) scale(1.04); will-change: transform; }
 #room::after { content: ""; position: absolute; inset: 0; background: radial-gradient(120% 90% at 50% 40%, rgba(40, 28, 16, 0) 30%, rgba(8, 6, 4, 0.72) 100%), linear-gradient(180deg, rgba(60, 40, 20, 0.18), rgba(0, 0, 0, 0.3)); }
 :root[data-theme="spatial"] #room, :root:not([data-theme]) #room { display: block; }
-#scene { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; display: none; }
-:root[data-theme="horizon"] #scene { display: block; }
+/* horizon: a real dusk over a sea of clouds (Pixabay, free licence), drifting very slowly */
+#sky { position: fixed; inset: -2%; width: 104%; height: 104%; object-fit: cover; z-index: 0; display: none; filter: brightness(0.74) saturate(1.05); animation: sky-drift 40s ease-in-out infinite alternate; }
+:root[data-theme="horizon"] #sky { display: block; }
+@keyframes sky-drift { to { transform: scale(1.06) translate(-1%, 0.6%); } }
+:root[data-theme="horizon"] body::after { content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none; background: linear-gradient(180deg, rgba(6, 8, 16, 0.45) 0%, rgba(6, 8, 16, 0) 30%, rgba(6, 8, 16, 0) 60%, rgba(6, 8, 16, 0.55) 100%); }
+@media (prefers-reduced-motion: reduce) { #sky { animation: none; } }
 #app { position: relative; z-index: 1; }
 
 /* ── intro: welcome in five languages, then the globe ── */

@@ -19,14 +19,14 @@
   --logo-invert: 1;
   color-scheme: dark;
 }
-:root[data-theme="ribbon"] { --bg: #040507; --scene: radial-gradient(80% 50% at 50% 115%, #10294a 0%, rgba(16, 41, 74, 0) 65%), radial-gradient(60% 40% at 50% -10%, #171c2b 0%, rgba(23, 28, 43, 0) 70%), #040507; --panel: rgba(20, 22, 28, 0.6); --panel-solid: #111318; }
+:root[data-theme="ribbon"] { --bg: #03050a; --scene: linear-gradient(180deg, rgba(3, 5, 10, 0.55), rgba(3, 5, 10, 0.2) 30%, rgba(3, 5, 10, 0.85) 62%, #03050a 80%), url(/media/stars.jpg) center 20% / cover no-repeat, #03050a; --panel: rgba(20, 24, 34, 0.6); --panel-solid: #0f121a; }
 :root[data-theme="axon"] { --bg: #000; --scene: #000; --ink: #ecebf3; --panel: rgba(255, 255, 255, 0.025); --panel-solid: #0a0a0c; --panel-line: rgba(255, 255, 255, 0.16); --blur: none; --soft: rgba(255, 255, 255, 0.05);
   --r-sm: 3px; --r: 4px; --r-lg: 6px; --r-xl: 8px; --font: ui-monospace, "SF Mono", Menlo, Consolas, monospace; --pill-bg: #ecebf3; --shadow: none; --shadow-lg: 0 0 0 1px rgba(255, 255, 255, 0.16); }
 :root[data-theme="aurora"] { --bg: #ffffff; --scene: radial-gradient(60% 45% at 50% 30%, rgba(124, 92, 255, 0.16) 0%, rgba(124, 92, 255, 0) 70%), radial-gradient(45% 35% at 62% 46%, rgba(255, 122, 26, 0.18) 0%, rgba(255, 122, 26, 0) 70%), #fff;
   --ink: #111113; --ink2: rgba(17, 17, 19, 0.72); --mute: rgba(60, 60, 67, 0.56); --line: rgba(0, 0, 0, 0.08); --soft: rgba(0, 0, 0, 0.045); --soft2: rgba(0, 0, 0, 0.08);
   --panel: rgba(255, 255, 255, 0.72); --panel-solid: #ffffff; --panel-line: rgba(0, 0, 0, 0.09); --pill-bg: #111113; --pill-ink: #fff; --accent: #0071e3;
   --shadow: 0 8px 30px rgba(0, 0, 0, 0.07); --shadow-lg: 0 20px 60px rgba(0, 0, 0, 0.14); --logo-invert: 0; color-scheme: light; }
-:root[data-theme="horizon"] { --bg: #0b0f18; --scene: #0b0f18; --panel: rgba(18, 20, 28, 0.5); --panel-solid: #14161d; --blur: blur(30px) saturate(150%); }
+:root[data-theme="horizon"] { --bg: #0b0f18; --scene: #0b0f18 url(/media/horizon.jpg) center / cover no-repeat; --panel: rgba(16, 18, 26, 0.52); --panel-solid: #14161d; --blur: blur(30px) saturate(150%); }
 
 *, *::before, *::after { box-sizing: border-box; }
 html, body { height: 100%; }

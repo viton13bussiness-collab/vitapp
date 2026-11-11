@@ -22,11 +22,11 @@ export const getTheme = () => root.dataset.theme || 'spatial';
 export function setTheme(id, save = true) {
   if (!THEMES.some((t) => t.id === id)) id = 'spatial';
   root.dataset.theme = id; try { localStorage.setItem('vit.theme', id); } catch { /* private mode */ }
-  if (id === 'horizon') drawScene();
+  const sky = document.getElementById('sky'); if (sky) { if (id === 'horizon') { sky.preload = 'auto'; sky.play?.().catch(() => {}); } else sky.pause?.(); }
   if (save) api('/api/settings', { body: { theme: id } }).catch(() => {});
   window.dispatchEvent(new CustomEvent('vit:theme', { detail: id }));
 }
-export function initTheme(server) { let id = server; try { id ||= localStorage.getItem('vit.theme'); } catch { /* ignore */ } setTheme(id || 'spatial', false); window.addEventListener('resize', () => getTheme() === 'horizon' && drawScene()); }
+export function initTheme(server) { let id = server; try { id ||= localStorage.getItem('vit.theme'); } catch { /* ignore */ } setTheme(id || 'spatial', false); }
 
 // ── welcome: five languages, then the globe rises ──
 const HELLO = [['Welcome to the ecosystem', 'en'], ['Добро пожаловать в экосистему', 'ru'], ['Bienvenido al ecosistema', 'es'], ['Bienvenue dans l’écosystème', 'fr'], ['欢迎来到生态系统', 'zh']];
@@ -128,39 +128,59 @@ const LAYOUT = {
     paint();
     return () => { alive = false; };
   },
+  // Nature-Treks wall: the worlds stand side by side on a curved wall over dark water, the VITON13 globe of dust hangs above.
   ribbon(root, ctx, orbs) {
-    let sel = 0; const STEP = 27, ring = h('div', { class: 'rb-ring' }), foot = h('div', { class: 'rb-foot' });
-    const panels = WORLDS.map((w, i) => h('button', { class: 'rb-panel', style: `--a:${i * STEP}deg`, onclick: (e) => (i === sel ? ctx.go(w.id, undefined, e.currentTarget.querySelector('.rb-face')) : pick(i)), 'aria-label': w.name }, h('span', { class: 'rb-label' }, w.name), h('div', { class: 'rb-face' }, picture(w.id, orbs, { live: true, size: 420, points: 5200 }))));
-    const pick = (i) => { sel = Math.max(0, Math.min(WORLDS.length - 1, i)); paint(); };
-    function paint() { const w = WORLDS[sel]; ring.style.setProperty('--rot', `${sel * STEP}deg`); panels.forEach((p, i) => p.classList.toggle('on', i === sel));
-      foot.replaceChildren(h('button', { class: 'icon-btn', 'aria-label': 'Назад', onclick: () => pick(sel - 1), disabled: sel === 0 }, icon('back')), h('div', { class: 'rb-text' }, h('h2', null, w.name), h('p', null, w.line), h('button', { class: 'btn', onclick: () => ctx.go(w.id) }, 'Войти')), h('button', { class: 'icon-btn', 'aria-label': 'Вперёд', style: 'transform:scaleX(-1)', onclick: () => pick(sel + 1), disabled: sel === WORLDS.length - 1 }, icon('back'))); }
-    ring.append(...panels); const stage = h('div', { class: 'rb-stage' }, ring);
+    let sel = 2; const N = WORLDS.length, ring = h('div', { class: 'rb-ring' }), foot = h('div', { class: 'rb-foot' });
+    const globe = h('canvas', { class: 'rb-globe', 'aria-hidden': 'true' }); orbs.push(createOrb(globe, { size: 520, points: 9000, interactive: false, shape: 'globe', fit: 0.42 }));
+    const panels = WORLDS.map((w, i) => h('button', { class: 'rb-panel', style: `--i:${i - (N - 1) / 2}`, onclick: (e) => (i === sel ? ctx.go(w.id, undefined, e.currentTarget.querySelector('.rb-face')) : pick(i)), 'aria-label': w.name },
+      h('span', { class: 'rb-label' }, w.name), h('div', { class: 'rb-face' }, picture(w.id, orbs, { live: true, size: 420, points: 4000 }), h('span', { class: 'rb-gloss' }))));
+    const pick = (i) => { sel = Math.max(0, Math.min(N - 1, i)); paint(); };
+    function paint() { const w = WORLDS[sel]; ring.style.setProperty('--sel', String(sel - (N - 1) / 2)); panels.forEach((p, i) => { p.classList.toggle('on', i === sel); p.style.setProperty('--d', String(Math.abs(i - sel))); });
+      foot.replaceChildren(h('button', { class: 'icon-btn', 'aria-label': 'Назад', onclick: () => pick(sel - 1), disabled: sel === 0 }, icon('back')),
+        h('div', { class: 'rb-text', key: w.id }, h('span', { class: 'cap' }, `0${sel + 1} / 0${N} · ${w.cap}`), h('h2', null, w.name), h('p', null, w.line), h('button', { class: 'btn', onclick: () => ctx.go(w.id, undefined, panels[sel].querySelector('.rb-face')) }, 'Войти')),
+        h('button', { class: 'icon-btn', 'aria-label': 'Вперёд', style: 'transform:scaleX(-1)', onclick: () => pick(sel + 1), disabled: sel === N - 1 }, icon('back'))); }
+    ring.append(...panels); const stage = h('div', { class: 'rb-stage' }, ring, h('div', { class: 'rb-floor', 'aria-hidden': 'true' }));
     let x0 = null; stage.addEventListener('pointerdown', (e) => { x0 = e.clientX; }); stage.addEventListener('pointerup', (e) => { if (x0 == null) return; const d = e.clientX - x0; x0 = null; if (Math.abs(d) > 50) pick(sel + (d < 0 ? 1 : -1)); });
     let wheelT = 0; stage.addEventListener('wheel', (e) => { const now = Date.now(); if (now - wheelT < 420 || Math.abs(e.deltaX + e.deltaY) < 12) return; wheelT = now; pick(sel + (e.deltaX + e.deltaY > 0 ? 1 : -1)); }, { passive: true });
     const key = (e) => { if (e.target.closest('input,textarea')) return; if (e.key === 'ArrowRight') pick(sel + 1); if (e.key === 'ArrowLeft') pick(sel - 1); if (e.key === 'Enter') ctx.go(WORLDS[sel].id); }; window.addEventListener('keydown', key);
-    root.append(h('div', { class: 'rb-top' }, h('img', { src: '/logo-mark.png', alt: 'VITON13' })), stage, foot); paint();
+    root.append(h('div', { class: 'rb-sky' }, globe), stage, foot); paint();
     return () => window.removeEventListener('keydown', key);
   },
+  // AXON: a black page, a field of dust in the middle, mono columns at the sides and registration marks in the corners.
   axon(root, ctx, orbs) {
-    const cv = h('canvas', { class: 'ax-dust', 'aria-hidden': 'true' }); orbs.push(createOrb(cv, { size: 1100, points: 18000, interactive: false }));
+    const cv = h('canvas', { class: 'ax-dust', 'aria-hidden': 'true' }); orbs.push(createOrb(cv, { size: 1100, points: 18000, interactive: true, wheel: false, fit: 0.46 }));
+    const clock = h('span'), tick = () => { clock.textContent = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' }); }; tick(); const timer = setInterval(tick, 1000);
+    const info = counts(ctx, () => paintCount()), countEls = {}, paintCount = () => { for (const [id, el] of Object.entries(countEls)) el.textContent = info[id] || ''; };
     const sect = (t, ...kids) => h('div', { class: 'ax-sect' }, h('div', { class: 'ax-h' }, `[${t}]`), kids);
-    root.append(cv, h('div', { class: 'ax-left' }, h('div', { class: 'ax-tags' }, ['Агент', 'Память', 'Агенты', 'Журнал', 'Магазин', 'Тело', 'Приложения'].map((t) => h('span', null, t))),
-        WORLDS.slice(1).map((w, i) => h('button', { class: 'ax-item', onclick: () => ctx.go(w.id) }, thumb(w.id), h('div', { class: 'ax-meta' }, h('span', null, w.name), h('span', null, `0${i + 2}`))))),
+    root.append(h('i', { class: 'ax-c tl' }), h('i', { class: 'ax-c tr' }), h('i', { class: 'ax-c bl' }), h('i', { class: 'ax-c br' }),
+      h('div', { class: 'ax-left' }, h('div', { class: 'ax-tags' }, ['Агент', 'Память', 'Агенты', 'Журнал', 'Магазин', 'Тело', 'Приложения'].map((t) => h('span', null, t))),
+        h('div', { class: 'ax-cards' }, WORLDS.slice(1).map((w, i) => h('button', { class: 'ax-item', onclick: (e) => ctx.go(w.id, undefined, e.currentTarget.querySelector('.art')) }, thumb(w.id), h('div', { class: 'ax-meta' }, h('span', null, w.name), h('span', null, `0${i + 2}`)), (countEls[w.id] = h('small', null, info[w.id] || '')))))),
+      h('div', { class: 'ax-mid' }, cv, h('div', { class: 'ax-hint' }, 'тяните — космос вращается')),
       h('div', { class: 'ax-right' }, sect('Инфо', h('p', null, 'VITON13 — частная экосистема. В центре — VIT: агент, который планирует шаги, ищет данные, подключает агентов и доводит работу до результата.')),
         sect('Миры', WORLDS.map((w, i) => h('button', { class: 'ax-link', onclick: () => ctx.go(w.id) }, `0${i + 1} — ${w.name}`, h('span', null, w.cap)))),
-        sect('Профиль', h('p', null, `${ctx.me.name} · ${ctx.me.kind === 'viton' ? 'VITON ID' : 'локальный профиль'}`)), h('button', { class: 'btn', onclick: () => ctx.go('vit') }, 'Открыть VIT')));
+        sect('Профиль', h('p', null, `${ctx.me.name} · ${ctx.me.kind === 'viton' ? 'VITON ID' : 'локальный профиль'}`)), h('button', { class: 'btn', onclick: () => ctx.go('vit') }, 'Открыть VIT')),
+      h('div', { class: 'ax-foot' }, h('span', null, 'VITON13 OS · открытый тест'), clock));
+    return () => clearInterval(timer);
   },
+  // A white sheet: a slow ribbon of colour behind a two-voice headline, the worlds as cards with their photographs.
   aurora(root, ctx) {
-    root.append(h('div', { class: 'au-blob', 'aria-hidden': 'true' }), h('div', { class: 'au-in' }, h('img', { class: 'au-mark', src: '/logo-mark.png', alt: '' }), h('h1', null, h('i', null, 'одна экосистема,'), ' пять миров.'),
-      h('p', null, `${ctx.me.name}, выберите, куда войти. VIT доведёт цель до результата, остальное — рядом.`),
-      h('div', { class: 'au-row' }, WORLDS.map((w, i) => h('button', { class: 'au-card', onclick: () => ctx.go(w.id) }, h('span', { class: 'cap' }, `0${i + 1}`), h('b', null, w.name), h('small', null, w.cap), icon('right'))))));
+    const info = counts(ctx, () => paint()), row = h('div', { class: 'au-row' });
+    const paint = () => row.replaceChildren(...WORLDS.map((w, i) => h('button', { class: 'au-card', onclick: (e) => ctx.go(w.id, undefined, e.currentTarget.querySelector('.art')) }, thumb(w.id), h('span', { class: 'au-t' }, h('span', { class: 'cap' }, `0${i + 1}`), h('b', null, w.name), h('small', null, info[w.id] || w.cap)), icon('right'))));
+    paint();
+    root.append(h('div', { class: 'au-swoosh', 'aria-hidden': 'true' }, h('i', { class: 'a' }), h('i', { class: 'b' }), h('i', { class: 'c' })),
+      h('div', { class: 'au-in' }, h('span', { class: 'cap au-kicker' }, 'Экосистема VITON13 · пять миров'), h('h1', null, h('i', null, 'одна экосистема,'), h('br'), 'пять миров.'),
+        h('p', null, `${ctx.me.name}, выберите, куда войти. VIT доведёт цель до результата, остальное — рядом.`), row),
+      h('div', { class: 'au-foot' }, h('span', null, 'Агент · журнал · магазин · медицина · приложения'), h('span', null, 'VITON13 OS')));
   },
+  // Fastshot: a real dusk over a sea of clouds, one dark field for the goal, the open projects underneath.
   horizon(root, ctx) {
     const ta = h('textarea', { rows: 2, placeholder: 'Например: хочу запустить арт-студию современной живописи', 'aria-label': 'Цель для VIT' }), send = () => { const t = ta.value.trim(); if (t) ctx.askVit(t); else ctx.go('vit'); };
+    const model = h('span', { class: 'hz-model' }, 'Локальная модель');
+    ctx.api('/api/models').then((d) => { const m = d.items.find((x) => x.state === 'ok' && (d.policy === 'cloud' ? !x.local : x.local)) || d.items.find((x) => x.state === 'ok'); if (m) model.textContent = m.model; }).catch(() => {});
     ta.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } });
     root.append(h('div', { class: 'hz-in' }, h('h1', null, 'Опишите цель. VIT доведёт её до результата.'),
-      h('div', { class: 'glass hz-box' }, ta, h('div', { class: 'hz-row' }, WORLDS.slice(1).map((w) => h('button', { class: 'hz-chip', onclick: () => ctx.go(w.id) }, icon(w.id), w.name)), h('span', { style: 'flex:1' }), h('button', { class: 'round send', 'aria-label': 'Отправить VIT', onclick: send }, icon('up')))),
-      h('div', { class: 'cap' }, 'Экосистема VITON13 · агент, журнал, магазин, медицина, приложения')));
+      h('div', { class: 'hz-box' }, ta, h('div', { class: 'hz-row' }, WORLDS.slice(1).map((w) => h('button', { class: 'hz-chip', onclick: () => ctx.go(w.id) }, icon(w.id), w.name)), h('span', { style: 'flex:1' }), model, h('button', { class: 'round send', 'aria-label': 'Отправить VIT', onclick: send }, icon('up'))))),
+      h('div', { class: 'hz-built' }, h('span', { class: 'cap' }, 'Работает на открытом коде'), h('div', null, ['Ollama', 'whisper.cpp', 'three.js', 'SQLite', 'Node.js'].map((n) => h('b', null, n)))));
   },
 };
 export function viewHome(ctx) {
