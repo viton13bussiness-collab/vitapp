@@ -1,0 +1,56 @@
+/* VITON13 Store world: a foggy hall in CSS 3D. The fog is mixed from the theme's ink and background, so the hall belongs to every theme. */
+.st { --st-x: 440px; --st-gap: 300px; --st-cw: 200px; --st-ch: 262px; --st-fog: color-mix(in srgb, var(--ink) 34%, var(--bg)); --st-fog-far: color-mix(in srgb, var(--ink) 52%, var(--bg)); --st-ground: color-mix(in srgb, var(--ink) 18%, var(--bg)); position: relative; overflow: hidden; }
+.st-head { position: relative; z-index: 4; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 20px; padding: 14px clamp(16px, 4vw, 40px) 10px; }
+.st-brand { display: flex; align-items: baseline; gap: 14px; } .st-brand b { font-size: 17px; letter-spacing: 0.16em; font-weight: 700; }
+.st-pills { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; max-width: 100%; } .st-pills::-webkit-scrollbar { display: none; }
+.st-pill { flex: none; height: 32px; padding: 0 14px; border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--ink2); background: var(--panel); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); box-shadow: inset 0 0 0 1px var(--panel-line); transition: background 0.3s var(--ease), color 0.3s var(--ease); white-space: nowrap; }
+.st-pill.on { background: var(--pill-bg); color: var(--pill-ink); box-shadow: none; }
+
+.st-room { position: relative; flex: 1; min-height: 0; overflow: hidden; perspective: 1000px; perspective-origin: 50% 44%; outline: none; touch-action: none; margin: 0 clamp(8px, 1.6vw, 18px) clamp(8px, 1.6vw, 18px); border-radius: var(--r-xl);
+  background: linear-gradient(180deg, var(--st-fog) 0%, var(--st-fog-far) 47%, var(--st-fog-far) 53%, var(--st-ground) 100%); box-shadow: inset 0 0 0 1px var(--panel-line); }
+.st-world { position: absolute; left: 50%; top: 50%; width: 0; height: 0; transform-style: preserve-3d; will-change: transform; }
+.st-fog { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(34% 30% at 50% 46%, color-mix(in srgb, var(--st-fog-far) 62%, transparent) 0%, transparent 72%), linear-gradient(180deg, color-mix(in srgb, var(--bg) 46%, transparent) 0%, transparent 26%, transparent 78%, color-mix(in srgb, var(--bg) 40%, transparent) 100%); mix-blend-mode: normal; }
+.st-hint { position: absolute; left: 0; right: 0; bottom: 14px; text-align: center; pointer-events: none; color: color-mix(in srgb, var(--ink) 62%, transparent); }
+.st-floor { position: absolute; left: -1600px; width: 3200px; top: calc(var(--st-ch) / 2 + 46px); transform-origin: 50% 0; transform: rotateX(90deg) translateY(-100%) translateY(700px); pointer-events: none;
+  background: repeating-linear-gradient(90deg, transparent 0 198px, color-mix(in srgb, var(--ink) 9%, transparent) 198px 200px), linear-gradient(0deg, var(--st-ground), var(--st-fog-far)); opacity: 0.9; }
+.st-bar { position: absolute; left: 0; top: 0; height: 5px; margin-left: 0; transform-origin: 50% 50%; border-radius: 3px; background: linear-gradient(180deg, #ffffff, #9aa0a8 45%, #4b5057); box-shadow: 0 6px 14px rgba(0, 0, 0, 0.25); pointer-events: none; translate: -50% 0; }
+.st-sign { position: absolute; left: 0; top: 0; translate: -50% -50%; text-align: center; white-space: nowrap; pointer-events: none; line-height: 0.86; -webkit-box-reflect: below 2px linear-gradient(transparent 46%, rgba(0, 0, 0, 0.22)); }
+.st-sign span, .st-sign em { display: block; font-style: normal; font-weight: 800; letter-spacing: -0.04em; background: linear-gradient(180deg, #ffffff 0%, #d5d9de 20%, #7d838c 47%, #f6f8fa 52%, #aab0b8 74%, #4d5259 100%); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-stroke: 1px rgba(255, 255, 255, 0.5); filter: drop-shadow(0 14px 22px rgba(0, 0, 0, 0.35)); }
+.st-sign span { font-size: 128px; } .st-sign em { font-size: 62px; letter-spacing: 0.52em; margin-right: -0.52em; margin-top: 10px; }
+.st-card { position: absolute; left: 0; top: 0; width: var(--st-cw); height: var(--st-ch); margin: calc(var(--st-ch) / -2) 0 0 calc(var(--st-cw) / -2); border-radius: 14px; overflow: hidden; background: var(--panel-solid); box-shadow: 0 22px 40px rgba(0, 0, 0, 0.32), inset 0 0 0 1px var(--panel-line); transition: opacity 0.4s var(--ease), filter 0.3s; text-align: left; -webkit-box-reflect: below 10px linear-gradient(transparent 62%, rgba(0, 0, 0, 0.2)); backface-visibility: hidden; }
+.st-card:hover, .st-card:focus-visible { filter: brightness(1.12); }
+.st-photo { position: absolute; inset: 0; display: block; background: var(--soft2); }
+.st-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.st-noimg { display: none; position: absolute; inset: 0; place-items: center; text-align: center; padding: 14px; font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--mute); }
+.st-card.noimg .st-noimg { display: grid; }
+.st-label { position: absolute; left: 0; right: 0; bottom: 0; padding: 26px 12px 10px; display: grid; gap: 1px; color: #fff; background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.72)); }
+.st-label b { font-size: 12.5px; font-weight: 600; line-height: 1.2; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; } .st-label i { font-style: normal; font-size: 12px; opacity: 0.85; font-variant-numeric: tabular-nums; }
+.st-haze { position: absolute; inset: 0; background: var(--st-fog-far); opacity: 0; pointer-events: none; }
+.st-room .empty { position: absolute; inset: 0; display: grid; place-content: center; }
+.st-world > .empty { position: static; translate: -50% -50%; width: 300px; }
+
+/* the product sheet */
+.st-sheet { position: absolute; z-index: 6; top: 64px; right: clamp(16px, 2.4vw, 30px); bottom: clamp(16px, 2.4vw, 30px); width: min(390px, calc(100% - 32px)); display: flex; flex-direction: column; overflow: hidden; animation: st-in 0.55s var(--ease) both; box-shadow: var(--shadow-lg); }
+.st-sheet-in { flex: 1; min-height: 0; padding: 14px 18px 20px; display: flex; flex-direction: column; gap: 10px; } .st-sheet-in > * { flex: none; }
+.st-close { position: absolute; top: 10px; right: 10px; z-index: 2; background: var(--panel); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); } .st-close .icon { transform: rotate(45deg); }
+.st-gallery { aspect-ratio: 4 / 5; border-radius: var(--r); overflow: hidden; background: var(--soft2); }
+.st-main { width: 100%; height: 100%; object-fit: cover; display: block; }
+.st-thumbs { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; } .st-thumbs::-webkit-scrollbar { display: none; }
+.st-thumbs button { flex: none; width: 46px; height: 58px; border-radius: 9px; overflow: hidden; opacity: 0.55; transition: opacity 0.25s, box-shadow 0.25s; } .st-thumbs button.on { opacity: 1; box-shadow: 0 0 0 2px var(--ink); } .st-thumbs img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.st-sheet h2 { font-size: 22px; line-height: 1.15; letter-spacing: -0.02em; }
+.st-price { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; display: flex; align-items: baseline; gap: 10px; } .st-price small { font-size: 12px; font-weight: 500; color: var(--mute); }
+.st-sheet p { color: var(--ink2); font-size: 14.5px; }
+.st-params { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 13px; padding-top: 10px; border-top: 1px solid var(--line); } .st-params dt { color: var(--mute); } .st-params dd { margin: 0; }
+.st-acts { display: grid; gap: 8px; margin-top: 6px; } .st-acts .icon { width: 15px; height: 15px; } .st-acts .btn { white-space: normal; height: auto; min-height: 42px; padding: 8px 16px; text-align: center; }
+@keyframes st-in { from { opacity: 0; transform: translateX(26px); } to { opacity: 1; transform: none; } }
+@keyframes st-up { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: none; } }
+
+@media (max-width: 760px) {
+  .st { --st-x: 150px; --st-gap: 190px; --st-cw: 124px; --st-ch: 168px; }
+  .st-room { perspective: 620px; }
+  .st-sign span { font-size: 64px; } .st-sign em { font-size: 26px; }
+  .st-label b { font-size: 10.5px; } .st-label i { font-size: 10.5px; } .st-label { padding: 18px 8px 7px; }
+  .st-sheet { top: auto; left: 8px; right: 8px; bottom: 8px; width: auto; max-height: 82%; animation-name: st-up; }
+  .st-gallery { aspect-ratio: 4 / 3; }
+  .st-hint { font-size: 9.5px; }
+}

@@ -19,9 +19,10 @@ async function ensureServer() {
 }
 
 async function boot() {
+  if (process.platform === 'darwin' && !app.isPackaged) app.dock.setIcon(path.join(__dirname, 'icon.png'));        // the globe mark in the Dock while running from source
   await ensureServer();
   session.defaultSession.setPermissionRequestHandler((_wc, permission, done) => done(permission === 'media'));      // the microphone, nothing else
-  const win = new BrowserWindow({ width: 1180, height: 800, minWidth: 380, minHeight: 560, title: 'VIT', backgroundColor: '#ffffff',
+  const win = new BrowserWindow({ width: 1180, height: 800, minWidth: 380, minHeight: 560, title: 'VIT', backgroundColor: '#0c0c0f', icon: path.join(__dirname, 'icon.png'),
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default', trafficLightPosition: { x: 18, y: 18 }, webPreferences: { contextIsolation: true, sandbox: true } });
   win.webContents.setWindowOpenHandler(({ url: target }) => { if (target.startsWith(url)) return { action: 'allow' }; if (/^https?:\/\//.test(target)) shell.openExternal(target); return { action: 'deny' }; });
   win.webContents.on('will-navigate', (e, target) => { if (!target.startsWith(url)) { e.preventDefault(); if (/^https?:\/\//.test(target)) shell.openExternal(target); } });

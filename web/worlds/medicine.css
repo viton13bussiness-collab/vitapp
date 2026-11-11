@@ -1,0 +1,79 @@
+/* World «Медицина». A 3D figure fills the stage; glass widgets float over it (list of zones, zone card, view pills). */
+.md-root { position: relative; overflow: hidden; }
+.md-stage { position: absolute; inset: 0; }
+.md-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; outline: none; }
+.md-canvas:active { cursor: grabbing; }
+.md-loading { position: absolute; left: 0; right: 0; top: 50%; text-align: center; pointer-events: none; }
+.md-head { position: absolute; top: 18px; left: 0; right: 0; text-align: center; pointer-events: none; animation: rise 0.9s var(--ease) both; }
+.md-head h1 { font-size: 28px; letter-spacing: -0.03em; font-weight: 650; line-height: 1.15; margin-top: 6px; }
+.md-head p { color: var(--ink2); font-size: 13.5px; margin-top: 4px; transition: opacity 0.4s; }
+.md-root.picked .md-head p { opacity: 0; }
+
+/* markers on the body */
+.md-marks { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.md-mark { position: absolute; left: 0; top: 0; width: 0; height: 0; transition: opacity 0.35s; }
+.md-mark i { position: absolute; left: -4.5px; top: -4.5px; width: 9px; height: 9px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25), 0 0 0 5px rgba(255, 255, 255, 0.2), 0 2px 8px rgba(0, 0, 0, 0.4); transition: transform 0.35s var(--spring), background 0.3s, box-shadow 0.3s; }
+.md-mark::before { content: ""; position: absolute; left: -16px; top: -16px; width: 32px; height: 32px; border-radius: 50%; }                    /* comfortable hit area */
+.md-mark span { position: absolute; left: 16px; top: -14px; height: 28px; padding: 0 12px; display: flex; align-items: center; border-radius: 999px; white-space: nowrap; font-size: 12.5px; font-weight: 600;
+  background: color-mix(in srgb, var(--panel-solid) 84%, transparent); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); border: 1px solid var(--panel-line); color: var(--ink); opacity: 0; transform: translateX(-6px); transition: opacity 0.25s, transform 0.35s var(--ease); pointer-events: none; }
+.md-mark:hover i, .md-mark.hover i { transform: scale(1.35); }
+.md-mark:hover span, .md-mark.hover span, .md-mark.on span { opacity: 1; transform: none; }
+.md-mark.on i { background: var(--hot); transform: scale(1.25); box-shadow: 0 0 0 5px color-mix(in srgb, var(--hot) 30%, transparent), 0 0 22px var(--hot); }
+
+/* list of zones */
+.md-side { position: absolute; left: 20px; top: 50%; transform: translateY(-50%); width: 288px; padding: 16px 12px 12px; animation: md-in-l 0.9s var(--ease) both; }
+.md-side-head { display: flex; align-items: baseline; justify-content: space-between; padding: 0 10px 10px; } .md-side-head b { font-size: 16px; letter-spacing: -0.015em; }
+.md-list { display: grid; gap: 4px; }
+.md-row { display: flex; align-items: center; gap: 11px; width: 100%; height: 46px; padding: 0 12px 0 14px; border-radius: 999px; text-align: left; font-size: 14.5px; font-weight: 550; color: var(--ink); transition: background 0.3s var(--ease), color 0.3s var(--ease), transform 0.3s var(--ease); }
+.md-row i { width: 8px; height: 8px; border-radius: 50%; background: var(--soft2); flex: none; transition: background 0.3s, box-shadow 0.3s; }
+.md-row span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.md-row .icon { width: 16px; height: 16px; opacity: 0.4; }
+.md-row:hover { background: var(--soft); } .md-row:active { transform: scale(0.98); }
+.md-row.on { background: var(--pill-bg); color: var(--pill-ink); } .md-row.on i { background: var(--hot); box-shadow: 0 0 10px var(--hot); } .md-row.on .icon { opacity: 0.7; }
+.md-note { font-size: 12px; color: var(--mute); padding: 10px 10px 2px; line-height: 1.4; }
+
+/* zone card */
+.md-card { position: absolute; right: 20px; top: 20px; bottom: 86px; width: 340px; padding: 20px; display: none; }
+.md-root.picked .md-card { display: block; animation: md-in-r 0.6s var(--ease) both; }
+.md-close { position: absolute; right: 10px; top: 10px; }
+.md-card-top { display: grid; grid-template-columns: 96px 1fr; gap: 14px; align-items: center; padding-right: 28px; }
+.md-card-top h2 { font-size: 21px; letter-spacing: -0.025em; line-height: 1.15; margin: 3px 0 5px; } .md-card-top p { font-size: 13px; color: var(--ink2); line-height: 1.4; }
+.md-organ { position: relative; width: 96px; height: 96px; border-radius: 22px; background: var(--soft); overflow: hidden; }
+.md-organ-gl, .md-organ-poster { position: absolute; inset: 0; width: 100%; height: 100%; } .md-organ-poster { object-fit: contain; padding: 10px; opacity: 0.85; }
+.md-sect { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.md-sect ul { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.md-sect li { position: relative; padding-left: 16px; font-size: 14px; line-height: 1.4; }
+.md-sect li::before { content: ""; position: absolute; left: 2px; top: 8px; width: 5px; height: 5px; border-radius: 50%; background: var(--mute); }
+.md-flags { border: 1px solid color-mix(in srgb, var(--bad) 40%, transparent); background: color-mix(in srgb, var(--bad) 11%, transparent); border-radius: var(--r); padding: 14px; }
+.md-flags .cap { color: var(--bad); } .md-flags li::before { background: var(--bad); }
+.md-ask { width: 100%; margin-top: 16px; height: 46px; } .md-ask .icon { width: 18px; height: 18px; }
+.md-card .md-note { padding: 10px 2px 0; text-align: center; }
+.md-credit { font-size: 10.5px; color: var(--mute); text-align: center; margin-top: 6px; line-height: 1.4; } .md-credit a { color: inherit; text-decoration: underline; }
+
+/* view pills */
+.md-bar { position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); display: flex; align-items: center; gap: 4px; padding: 5px; border-radius: 999px; animation: md-in-b 0.9s var(--ease) both; max-width: calc(100% - 24px); }
+.md-pill { height: 36px; padding: 0 16px; border-radius: 999px; font-size: 13.5px; font-weight: 600; color: var(--ink); white-space: nowrap; transition: background 0.25s, transform 0.25s var(--ease); }
+.md-pill:hover { background: var(--soft2); } .md-pill:active { transform: scale(0.95); }
+.md-bar .seg { background: var(--soft); margin: 0 4px; flex: none; } .md-bar .seg button { height: 30px; padding: 0 12px; white-space: nowrap; }
+
+@keyframes md-in-l { from { opacity: 0; transform: translate(-16px, -50%); } to { opacity: 1; transform: translate(0, -50%); } }
+@keyframes md-in-r { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: none; } }
+@keyframes md-in-b { from { opacity: 0; transform: translate(-50%, 14px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@keyframes md-in-up { from { transform: translateY(100%); } to { transform: none; } }
+
+@media (max-width: 1020px) and (min-width: 761px) { .md-side { width: 236px; left: 12px; } .md-card { width: 292px; right: 12px; } .md-row { font-size: 13.5px; } }
+@media (max-width: 760px) {
+  .md-head { top: 8px; } .md-head h1 { font-size: 22px; } .md-head p { font-size: 12.5px; }
+  .md-side { left: 0; right: 0; top: auto; bottom: 64px; width: auto; transform: none; padding: 0; background: none; border: 0; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; animation: fade 0.8s var(--ease) both; }
+  .md-side-head, .md-side .md-note { display: none; }
+  .md-list { display: flex; gap: 6px; overflow-x: auto; padding: 4px 12px; scrollbar-width: none; } .md-list::-webkit-scrollbar { display: none; }
+  .md-row { width: auto; flex: none; height: 38px; padding: 0 14px 0 12px; font-size: 13.5px; background: var(--panel); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); border: 1px solid var(--panel-line); }
+  .md-row span { overflow: visible; } .md-row .icon { display: none; }
+  .md-bar { bottom: 12px; gap: 2px; } .md-pill { padding: 0 11px; font-size: 13px; } .md-bar .seg { margin: 0 2px; } .md-bar .seg button { padding: 0 11px; font-size: 12.5px; } .md-bar .seg button span { display: none; }
+  .md-card { left: 0; right: 0; top: auto; bottom: 0; width: auto; max-height: 58%; border-radius: var(--r-lg) var(--r-lg) 0 0; border-bottom: 0; padding: 18px 16px calc(16px + env(safe-area-inset-bottom)); z-index: 5; }
+  .md-root.picked .md-card { animation: md-in-up 0.55s var(--ease) both; }
+  .md-root.picked .md-side, .md-root.picked .md-bar { visibility: hidden; }
+  .md-root.picked .md-head { opacity: 0; transition: opacity 0.3s; }
+  .md-card { background: color-mix(in srgb, var(--panel-solid) 90%, transparent); }
+  .md-mark span { display: none; } .md-mark.on span { display: flex; }
+}

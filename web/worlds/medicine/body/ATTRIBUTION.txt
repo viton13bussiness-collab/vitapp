@@ -1,0 +1,24 @@
+Human body base meshes — VITON13 MEDICINE
+
+Source:  Blender Studio "Human Base Meshes" asset bundle v1.4.1
+         https://download.blender.org/demo/asset-bundles/human-base-meshes/
+License: CC0 1.0 Universal (Public Domain Dedication)
+         https://creativecommons.org/publicdomain/zero/1.0/
+         Свободно для коммерческого использования, атрибуция не требуется.
+         Указана добровольно.
+
+Использованы меши GEO-body_male_realistic и GEO-body_female_realistic.
+Обработка для веба (VITON13): удалены глазные меши и исходные материалы,
+назначен единый матовый материал, фигура отцентрована по X/Y, ступни
+приведены к нулю по вертикали, рост нормирован в 1.0, нормали сглажены,
+геометрия сжата Draco (уровень 6).
+
+  male.glb / female.glb            — 3D для model-viewer, ~1.8–1.9 МБ
+  male-poster.webp / female-poster.webp — статичный рендер (EEVEE, ортокамера,
+                                        прозрачный фон) как постер до загрузки 3D
+
+  male-rigged.glb                  — та же мужская фигура со скелетом для
+                                     демонстрации упражнений: 51 кость, пальцы
+                                     по три фаланги, веса кожи (Blender, heat
+                                     weights через воксельную копию). Собирается
+                                     scripts/body/rig-body.py.

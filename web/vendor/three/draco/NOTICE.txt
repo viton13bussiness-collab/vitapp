@@ -1,0 +1,5 @@
+Draco decoding runtime distributed with three.js 0.185.1.
+Source: https://github.com/google/draco
+License: Apache License 2.0 — https://www.apache.org/licenses/LICENSE-2.0
+These unmodified decoder assets are served locally to load the existing
+Blender Studio CC0 male/female models without a decoder CDN dependency.

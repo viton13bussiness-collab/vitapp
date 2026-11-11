@@ -10,9 +10,10 @@ if (fs.existsSync(envFile)) for (const line of fs.readFileSync(envFile, 'utf8').
   if (m && process.env[m[1]] === undefined) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
 }
 export const VERSION = '0.1.0';
-export const PORT = +(process.env.VIT_PORT || 5313);
+const arg = (name) => process.argv.find((a) => a.startsWith(`--${name}=`))?.split('=').slice(1).join('=');
+export const PORT = +(arg('port') || process.env.VIT_PORT || 5313);
 export const HOST = process.env.VIT_HOST || '127.0.0.1';
-export const DATA = path.resolve(process.env.VIT_DATA || path.join(ROOT, 'data'));
+export const DATA = path.resolve(arg('data') || process.env.VIT_DATA || path.join(ROOT, 'data'));
 export const WORK = path.join(DATA, 'workspace');
 export const WEB = path.join(ROOT, 'web');
 fs.mkdirSync(WORK, { recursive: true });

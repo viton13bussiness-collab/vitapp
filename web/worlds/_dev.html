@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="ru" data-theme="spatial">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>VIT · world harness</title>
+<link rel="stylesheet" href="/tokens.css">
+<style>body { background: var(--scene); background-color: var(--bg); } #app { height: 100%; display: flex; flex-direction: column; } #bar { display: flex; gap: 8px; padding: 10px 14px; align-items: center; }</style>
+</head>
+<body>
+<div id="app"><div id="bar" class="cap"></div></div>
+<script type="module">
+// Mounts one world on its own: /worlds/_dev.html?world=journal&theme=spatial . Sign in to VIT in this browser first (local profile is enough).
+import { h, icon, api, toast, when, md, css, esc } from '/kit.js';
+const q = new URLSearchParams(location.search), world = q.get('world') || 'journal';
+document.documentElement.dataset.theme = q.get('theme') || 'spatial';
+const me = (await api('/api/me').catch(() => ({}))).me || (await api('/api/auth/local', { body: { name: 'Гость' } })).me;
+const ctx = { h, icon, api, toast, when, md, css, esc, me, theme: () => document.documentElement.dataset.theme, go: (v, arg) => toast('go → ' + v + (arg ? ' ' + JSON.stringify(arg) : '')), askVit: (t) => toast('VIT ← ' + t) };
+document.getElementById('bar').append(`world: ${world} · theme: `, ...['spatial', 'ribbon', 'axon', 'aurora', 'horizon'].map((t) => h('a', { href: `?world=${world}&theme=${t}`, style: 'margin-right:8px' }, t)));
+const view = (await import(`/worlds/${world}.js`)).default(ctx);
+document.getElementById('app').append(view.root);
+</script>
+</body>
+</html>

@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { HOST, PORT, WEB, WORK, VERSION } from './config.mjs';
 import { all, one, run, now, getSetting, setSetting } from './db.mjs';
 import { signInLocal, signInViton, signOut, userByToken } from './auth.mjs';
@@ -13,7 +13,12 @@ import { AGENTS } from './agents.mjs';
 import { listRequests, allRequests, createRequest, updateRequest, onRequest, teamChannel, STATUS } from './team.mjs';
 import { transcribe, voiceStatus } from './voice.mjs';
 
-const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json', '.md': 'text/markdown; charset=utf-8', '.ico': 'image/x-icon' };
+// Worlds of the ecosystem (journal, store, medicine, hub…) plug in as files in server/worlds/*.mjs, each exporting handle(ctx) → true when it answered.
+const worlds = [];
+{ const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'worlds');
+  for (const f of fs.existsSync(dir) ? fs.readdirSync(dir).filter((n) => n.endsWith('.mjs')).sort() : []) { try { const m = await import(pathToFileURL(path.join(dir, f)).href); if (typeof m.handle === 'function') worlds.push(m.handle); } catch (e) { console.error(`[world ${f}]`, e.message); } } }
+
+const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json', '.md': 'text/markdown; charset=utf-8', '.ico': 'image/x-icon', '.glb': 'model/gltf-binary', '.gltf': 'model/gltf+json', '.bin': 'application/octet-stream', '.wasm': 'application/wasm', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.woff2': 'font/woff2', '.mp4': 'video/mp4', '.txt': 'text/plain; charset=utf-8' };
 const LOCAL_HOST = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
 
 const json = (res, code, body) => { res.writeHead(code, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }); res.end(JSON.stringify(body)); };
@@ -54,7 +59,7 @@ async function api(req, res, url, user, token) {
   if (p === '/api/me') return json(res, 200, { ok: true, me: pubUser(user), version: VERSION });
   if (!user) return fail(res, 401, 'Войдите в VIT');
 
-  if (p === '/api/state') { const conv = currentConv(user); return json(res, 200, { ok: true, me: pubUser(user), conv: conv.id, messages: messages(conv.id), cats: CATS, agents: AGENTS.map(({ id, name, color, about }) => ({ id, name, color, about })), voice: voiceStatus(), speak: getSetting('speak', 'voice'), version: VERSION }); }
+  if (p === '/api/state') { const conv = currentConv(user); return json(res, 200, { ok: true, me: pubUser(user), conv: conv.id, messages: messages(conv.id), cats: CATS, agents: AGENTS.map(({ id, name, color, about }) => ({ id, name, color, about })), voice: voiceStatus(), speak: getSetting('speak', 'voice'), theme: getSetting('theme:' + user.id, ''), version: VERSION }); }
   if (p === '/api/convs' && m === 'GET') return json(res, 200, { ok: true, items: all("SELECT id, title, updated FROM convs WHERE user = ? AND title != '' ORDER BY updated DESC LIMIT 40", user.id) });
   if (p === '/api/convs' && m === 'POST') { const id = Number(run('INSERT INTO convs (user, title, created, updated) VALUES (?, ?, ?, ?)', user.id, '', now(), now()).lastInsertRowid); return json(res, 200, { ok: true, conv: id, messages: [] }); }
   if (seg[1] === 'convs' && seg[2] && m === 'GET') { const c = ownConv(user, seg[2]); if (!c) return fail(res, 404, 'Диалог не найден'); run('UPDATE convs SET updated = ? WHERE id = ?', now(), c.id); return json(res, 200, { ok: true, conv: c.id, messages: messages(c.id) }); }
@@ -95,6 +100,7 @@ async function api(req, res, url, user, token) {
   if (p === '/api/settings' && m === 'POST') { const b = await body(req);
     if (typeof b.proactive === 'boolean') setSetting('proactive', b.proactive);
     if (['always', 'voice', 'never'].includes(b.speak)) setSetting('speak', b.speak);
+    if (['spatial', 'ribbon', 'axon', 'aurora', 'horizon'].includes(b.theme)) setSetting('theme:' + user.id, b.theme);
     if (b.telegram && typeof b.telegram === 'object') { const cur = getSetting('telegram', {}); if (typeof b.telegram.token === 'string') cur.token = b.telegram.token.trim().slice(0, 200); if (typeof b.telegram.chat === 'string') cur.chat = b.telegram.chat.trim().slice(0, 60); setSetting('telegram', cur); }
     return json(res, 200, { ok: true }); }
 
@@ -106,6 +112,7 @@ async function api(req, res, url, user, token) {
   if (p === '/api/data' && m === 'DELETE') { forgetAll(user.id); for (const c of all('SELECT id FROM convs WHERE user = ?', user.id)) run('DELETE FROM msgs WHERE conv = ?', c.id);
     for (const j of all('SELECT id FROM jobs WHERE user = ?', user.id)) fs.rmSync(path.join(WORK, `job-${j.id}`), { recursive: true, force: true });
     run('DELETE FROM convs WHERE user = ?', user.id); run('DELETE FROM jobs WHERE user = ?', user.id); run('DELETE FROM requests WHERE user = ?', user.id); return json(res, 200, { ok: true }); }
+  for (const w of worlds) if (await w({ req, res, url, user, seg, method: m, json: (code, o) => json(res, code, o), fail: (code, msg) => fail(res, code, msg), body: () => body(req) })) return;
   return fail(res, 404, 'Нет такого адреса');
 }
 

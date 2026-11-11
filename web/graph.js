@@ -6,7 +6,7 @@ function glow(rgb) { if (sprites.has(rgb)) return sprites.get(rgb); const c = do
 
 export function createGraph(canvas, { cats, onSelect }) {
   const ctx = canvas.getContext('2d'), col = Object.fromEntries(cats.map((c) => [c.id, hexRGB(c.color)]));
-  let W = 0, H = 0, dpr = 1, nodes = [], edges = [], hidden = new Set(), hover = null, picked = null, raf = 0, t = 0, dust = [];
+  let W = 0, H = 0, dpr = 1, nodes = [], edges = [], hidden = new Set(), hover = null, picked = null, raf = 0, t = 0, dust = [], only = null;
   const hubs = cats.map((c, i) => ({ ...c, a: -Math.PI / 2 + (i / cats.length) * Math.PI * 2, x: 0, y: 0 }));
   const hubOf = Object.fromEntries(hubs.map((h) => [h.id, h]));
 
@@ -30,19 +30,25 @@ export function createGraph(canvas, { cats, onSelect }) {
     raf = requestAnimationFrame(draw); t += 0.016; step();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
     for (const d of dust) { ctx.fillStyle = `rgba(230,235,255,${(d.a * (0.6 + 0.4 * Math.sin(t * 1.5 + d.p))).toFixed(3)})`; ctx.fillRect(d.x, d.y, 1.2, 1.2); }
-    const cx = W / 2, cy = H / 2, byId = new Map(nodes.map((n) => [n.id, n])), vis = (n) => !hidden.has(n.cat);
+    const cx = W / 2, cy = H / 2, byId = new Map(nodes.map((n) => [n.id, n])), vis = (n) => !hidden.has(n.cat), lit = (n) => (!only || only.has(n.id) ? 1 : 0.14);
+    const near = new Set(); if (picked) for (const e of edges) { if (e.a === picked.id) near.add(e.b); if (e.b === picked.id) near.add(e.a); }
     ctx.globalCompositeOperation = 'lighter';
     for (const h of hubs) { const off = hidden.has(h.id); line(cx, cy, h.x, h.y, `rgba(${col[h.id]},${off ? 0.05 : 0.22})`);
       const q = (t * 0.25 + h.a) % 1; if (!off) spot(cx + (h.x - cx) * q, cy + (h.y - cy) * q, 5, col[h.id], Math.sin(q * Math.PI) * 0.9); }
-    for (const n of nodes) if (vis(n)) { const h = hubOf[n.cat]; line(h.x, h.y, n.x, n.y, `rgba(${col[n.cat]},${0.3 * n.born})`); }
+    for (const n of nodes) if (vis(n)) { const h = hubOf[n.cat]; line(h.x, h.y, n.x, n.y, `rgba(${col[n.cat]},${0.3 * n.born * lit(n)})`); }
     for (const e of edges) { const a = byId.get(e.a), b = byId.get(e.b); if (!a || !b || !vis(a) || !vis(b)) continue; const hot = picked && (picked.id === a.id || picked.id === b.id); line(a.x, a.y, b.x, b.y, `rgba(255,255,255,${hot ? 0.6 : 0.16})`, hot ? 1.4 : 1); }
     spot(cx, cy, 46 + 3 * Math.sin(t * 2), '255,140,40'); spot(cx, cy, 16, '255,240,210');
     for (const h of hubs) spot(h.x, h.y, hidden.has(h.id) ? 8 : 15, col[h.id], hidden.has(h.id) ? 0.3 : 1);
-    for (const n of nodes) if (vis(n)) { const r = (9 + Math.min(8, n.weight * 2)) * (n === hover || n === picked ? 1.5 : 1) * (0.4 + 0.6 * n.born); spot(n.x, n.y, r, col[n.cat], 0.5 + 0.5 * n.born); }
+    for (const n of nodes) if (vis(n)) { const r = (11 + Math.min(9, n.weight * 2.4)) * (n === hover || n === picked ? 1.5 : 1) * (0.4 + 0.6 * n.born); spot(n.x, n.y, r, col[n.cat], (0.5 + 0.5 * n.born) * lit(n)); if (n === picked) { ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(n.x, n.y, 13 + 2 * Math.sin(t * 3), 0, 6.283); ctx.stroke(); } }
     ctx.globalCompositeOperation = 'source-over'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.font = '600 12px -apple-system, "SF Pro Text", sans-serif';
     for (const h of hubs) { ctx.fillStyle = `rgba(255,255,255,${hidden.has(h.id) ? 0.25 : 0.82})`; const up = h.y < cy - 10; ctx.fillText(h.name, h.x, h.y + (up ? -22 : 24)); }
     ctx.font = '700 11px -apple-system, "SF Pro Text", sans-serif'; ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.fillText('V I T', cx, cy + 38);
+    // every thought says what it is while the map is small; later only the chosen one and its neighbours speak
+    ctx.font = '500 11px -apple-system, "SF Pro Text", sans-serif'; const few = nodes.length <= 22;
+    for (const n of nodes) { if (!vis(n) || n === hover || !(few || n === picked || near.has(n.id))) continue; const hb = hubOf[n.cat], right = n.x >= hb.x, txt = n.text.length > 30 ? n.text.slice(0, 28) + '…' : n.text;
+      ctx.textAlign = right ? 'left' : 'right'; ctx.fillStyle = `rgba(255,255,255,${((n === picked ? 0.95 : near.has(n.id) ? 0.8 : 0.5) * n.born * lit(n)).toFixed(3)})`; ctx.fillText(txt, n.x + (right ? 12 : -12), n.y + 0.5); }
+    ctx.textAlign = 'center';
     const tip = hover && hover !== picked ? hover : null;
     if (tip) { ctx.font = '500 13px -apple-system, "SF Pro Text", sans-serif'; const text = tip.text.length > 56 ? tip.text.slice(0, 54) + '…' : tip.text, w = ctx.measureText(text).width + 22, x = Math.max(w / 2 + 8, Math.min(W - w / 2 - 8, tip.x)), y = tip.y - 28 < 20 ? tip.y + 30 : tip.y - 28;
       ctx.fillStyle = 'rgba(30,30,36,0.92)'; ctx.beginPath(); ctx.roundRect(x - w / 2, y - 14, w, 28, 14); ctx.fill(); ctx.fillStyle = '#fff'; ctx.fillText(text, x, y + 0.5); }
@@ -59,6 +65,9 @@ export function createGraph(canvas, { cats, onSelect }) {
       nodes = list.map((n) => { const o = old.get(n.id), slot = (count[n.cat] = (count[n.cat] || 0) + 1); return o ? Object.assign(o, n, { slot }) : { ...n, slot, x: W / 2 + (Math.random() - 0.5) * 30, y: H / 2 + (Math.random() - 0.5) * 30, vx: 0, vy: 0, born: 0 }; });
       edges = links; if (picked && !nodes.includes(picked)) picked = null; },
     filter(set) { hidden = set; },
+    /** Light up only these ids (search), or everything when null. */
+    match(set) { only = set; },
+    focus(id) { picked = nodes.find((n) => n.id === id) || null; },
     clear() { picked = null; },
     destroy() { cancelAnimationFrame(raf); ro.disconnect(); },
   };
