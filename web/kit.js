@@ -1,4 +1,6 @@
 // Shared kit for the app and every world: DOM helper, icons, API calls, toast, dates, safe Markdown.
+import { marked } from '/vendor/lib/marked.esm.js';
+import DOMPurify from '/vendor/lib/purify.es.mjs';
 // ── tiny helpers ────────────────────────────────────────────────────────────
 export const $ = (sel, el = document) => el.querySelector(sel);
 export function h(tag, props, ...kids) {
@@ -46,28 +48,24 @@ export const when = (ms) => { const d = new Date(ms), now = new Date(), same = d
 
 // ── a small, safe Markdown ──────────────────────────────────────────────────
 export const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-function inline(s, sources) {
-  return esc(s).replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/(^|[\s(])_([^_]+)_(?=[\s).,!?:;]|$)/g, '$1<i>$2</i>')
-    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
-    .replace(/\[(\d{1,2})\]/g, (m, n) => { const src = sources?.find((x) => x.n === +n); return src ? `<sup><a href="${esc(src.url)}" target="_blank" rel="noopener noreferrer" title="${esc(src.title)}">${n}</a></sup>` : m; });
-}
+// Markdown is rendered by marked and cleaned by DOMPurify (both open source, vendored): tables, nested lists and code survive, scripts do not.
+marked.setOptions({ gfm: true, breaks: true });
+DOMPurify.addHook('afterSanitizeAttributes', (node) => { if (node.tagName === 'A') { node.setAttribute('target', '_blank'); node.setAttribute('rel', 'noopener noreferrer'); } });
+const SAFE = { ALLOWED_TAGS: ['p', 'br', 'b', 'strong', 'i', 'em', 'code', 'pre', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'blockquote', 'a', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'hr', 'del', 'sup'], ALLOWED_ATTR: ['href', 'title'], ALLOWED_URI_REGEXP: /^https?:\/\//i };
 export function md(text, sources) {
-  const out = []; let list = null, para = [], code = null;
-  const flushP = () => { if (para.length) { out.push('<p>' + para.join('<br>') + '</p>'); para = []; } };
-  const flushL = () => { if (list) { out.push(`<${list.t}>${list.items.map((i) => `<li>${i}</li>`).join('')}</${list.t}>`); list = null; } };
-  for (const raw of String(text).split('\n')) {
-    if (code) { if (/^```/.test(raw.trim())) { out.push(`<pre><code>${esc(code.join('\n'))}</code></pre>`); code = null; } else code.push(raw); continue; }
-    const line = raw.trim(); let m;
-    if (/^```/.test(line)) { flushP(); flushL(); code = []; continue; }
-    if (!line) { flushP(); flushL(); continue; }
-    if ((m = line.match(/^(#{1,4})\s+(.*)/))) { flushP(); flushL(); const lv = Math.min(4, m[1].length); out.push(`<h${lv}>${inline(m[2], sources)}</h${lv}>`); continue; }
-    if ((m = line.match(/^[-*•]\s+(.*)/)) || (m = line.match(/^(\d+)[.)]\s+(.*)/))) { flushP(); const t = m.length === 3 ? 'ol' : 'ul'; if (list?.t !== t) { flushL(); list = { t, items: [] }; } list.items.push(inline(m[m.length - 1], sources)); continue; }
-    flushL(); para.push(inline(line, sources));
-  }
-  if (code) out.push(`<pre><code>${esc(code.join('\n'))}</code></pre>`); flushP(); flushL();
-  return out.join('');
+  let html = DOMPurify.sanitize(marked.parse(String(text ?? '')), SAFE);
+  if (sources?.length) html = html.replace(/>[^<]+/g, (seg) => seg.replace(/\[(\d{1,2})\]/g, (m, n) => { const src = sources.find((x) => x.n === +n);      // [1] → a link to the source
+    return src && /^https?:\/\//i.test(src.url) ? `<sup><a href="${esc(src.url)}" target="_blank" rel="noopener noreferrer" title="${esc(src.title)}">${n}</a></sup>` : m; }));
+  return html;
 }
-
 
 /** Load a stylesheet once (worlds bring their own CSS). */
 export function css(href) { if (!document.querySelector(`link[href="${href}"]`)) document.head.append(h('link', { rel: 'stylesheet', href })); }
+
+/** Slide the pill `.ind` inside `box` under `el` (or hide it when nothing is chosen). The first placement does not animate. */
+export function slideTo(box, el) {
+  let ind = box.querySelector(':scope > .ind'); if (!ind) { ind = h('i', { class: 'ind still', 'aria-hidden': 'true' }); box.prepend(ind); }
+  if (!el || !el.offsetWidth) { ind.style.setProperty('--o', '0'); return; }
+  const set = () => { ind.style.setProperty('--x', el.offsetLeft + 'px'); ind.style.setProperty('--y', el.offsetTop + 'px'); ind.style.setProperty('--w', el.offsetWidth + 'px'); ind.style.setProperty('--h', el.offsetHeight + 'px'); ind.style.setProperty('--o', '1'); };
+  if (ind.classList.contains('still')) { set(); requestAnimationFrame(() => requestAnimationFrame(() => ind.classList.remove('still'))); } else set();
+}

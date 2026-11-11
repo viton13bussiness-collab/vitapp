@@ -3,21 +3,25 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>VIT · world harness</title>
+<title>VITON13 · world harness</title>
 <link rel="stylesheet" href="/tokens.css">
-<style>body { background: var(--scene); background-color: var(--bg); } #app { height: 100%; display: flex; flex-direction: column; } #bar { display: flex; gap: 8px; padding: 10px 14px; align-items: center; }</style>
+<link rel="stylesheet" href="/app.css">
+<style>#app { display: flex; flex-direction: column; } #bar { display: flex; gap: 8px; padding: 6px 14px 0; align-items: center; flex: none; } #bar a { color: var(--ink2); }</style>
 </head>
 <body>
+<div id="room" aria-hidden="true"></div>
 <div id="app"><div id="bar" class="cap"></div></div>
 <script type="module">
-// Mounts one world on its own: /worlds/_dev.html?world=journal&theme=spatial . Sign in to VIT in this browser first (local profile is enough).
+// Mounts one world on its own, in the same room the app shows it in: /worlds/_dev.html?world=journal&theme=spatial[&bar=0]
 import { h, icon, api, toast, when, md, css, esc } from '/kit.js';
 const q = new URLSearchParams(location.search), world = q.get('world') || 'journal';
+if (q.get('nogl') === '1') { const g = HTMLCanvasElement.prototype.getContext; HTMLCanvasElement.prototype.getContext = function (t, ...r) { return /webgl/.test(t) ? null : g.call(this, t, ...r); }; }      // test the no-3D path
 document.documentElement.dataset.theme = q.get('theme') || 'spatial';
 const me = (await api('/api/me').catch(() => ({}))).me || (await api('/api/auth/local', { body: { name: 'Гость' } })).me;
 const ctx = { h, icon, api, toast, when, md, css, esc, me, theme: () => document.documentElement.dataset.theme, go: (v, arg) => toast('go → ' + v + (arg ? ' ' + JSON.stringify(arg) : '')), askVit: (t) => toast('VIT ← ' + t) };
-document.getElementById('bar').append(`world: ${world} · theme: `, ...['spatial', 'ribbon', 'axon', 'aurora', 'horizon'].map((t) => h('a', { href: `?world=${world}&theme=${t}`, style: 'margin-right:8px' }, t)));
-const view = (await import(`/worlds/${world}.js`)).default(ctx);
+const bar = document.getElementById('bar');
+if (q.get('bar') === '0') bar.remove(); else bar.append(`world: `, ...['journal', 'store', 'hub', 'medicine'].map((w) => h('a', { href: `?world=${w}&theme=${document.documentElement.dataset.theme}`, style: 'margin-right:8px' }, w)), ' · theme: ', ...['spatial', 'ribbon', 'axon', 'aurora', 'horizon'].map((t) => h('a', { href: `?world=${world}&theme=${t}`, style: 'margin-right:8px' }, t)));
+const view = (window.__view = (await import(`/worlds/${world}.js`)).default(ctx));
 document.getElementById('app').append(view.root);
 </script>
 </body>

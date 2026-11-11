@@ -2,8 +2,10 @@
 // (conversation, memory, works, requests, agents, settings); the worlds live in /worlds and plug in by file.
 import { createOrb } from '/orb.js';
 import { createGraph } from '/graph.js';
-import { $, h, icon, api, stream, toast, when, md, css, esc } from '/kit.js';
-import { viewHome, runIntro, themeSheet, initTheme, getTheme } from '/home.js';
+import { $, h, icon, api, stream, toast, when, md, css, esc, slideTo } from '/kit.js';
+import Fuse from '/vendor/lib/fuse.basic.min.mjs';
+import { viewHome, themeSheet, initTheme, getTheme } from '/home.js';
+import { runIntro } from '/intro.js';
 
 // ── state ───────────────────────────────────────────────────────────────────
 const S = { me: null, conv: null, messages: [], cats: [], agents: [], jobs: new Map(), voice: {}, speak: 'voice', view: 'home', busy: false, memBadge: 0, reqBadge: 0, version: '' };
@@ -57,8 +59,8 @@ const WORLD_TABS = [['home', 'Главная'], ['vit', 'VIT'], ['journal', 'VJO
 const VIT_TABS = [['vit', 'Диалог'], ['memory', 'Память'], ['works', 'Работы'], ['requests', 'Заявки'], ['agents', 'Агенты']];
 const WORLDS = new Set(['journal', 'store', 'medicine', 'hub']), VIT_GROUP = new Set(VIT_TABS.map(([id]) => id));
 const KNOWN = new Set(['home', 'settings', ...VIT_GROUP, ...WORLDS]);
-let main, sub, vitView, current = null, tabEls = {}, subEls = {};
-const ctx = () => ({ h, icon, api, toast, when, md, css, esc, me: S.me, theme: getTheme, go: (v, arg) => go(v, false, arg), askVit: (text) => { go('vit'); vitView.send(text); } });
+let main, sub, tabsEl, vitView, current = null, tabEls = {}, subEls = {}, booted = false;
+const ctx = () => ({ h, icon, api, toast, when, md, css, esc, me: S.me, theme: getTheme, go: (v, arg, from) => go(v, false, arg, from), askVit: (text) => { go('vit'); vitView.send(text); } });
 
 function shell() {
   tabEls = Object.fromEntries(WORLD_TABS.map(([id, label]) => [id, h('button', { class: 'tab', onclick: () => go(id) }, icon(id), h('span', null, label))]));
@@ -66,13 +68,14 @@ function shell() {
   main = h('main', { class: 'main' }); sub = h('div', { class: 'sub hide', 'aria-label': 'Разделы VIT' }, Object.values(subEls));
   app.replaceChildren(h('div', { class: 'shell' },
     h('header', { class: 'top' }, h('button', { class: 'logo', onclick: () => go('home'), 'aria-label': 'VITON13 — на главную' }, h('img', { src: '/logo-mark.png', alt: '' }), brand()),
-      h('nav', { class: 'tabs glass', 'aria-label': 'Миры' }, Object.values(tabEls)),
+      (tabsEl = h('nav', { class: 'tabs glass', 'aria-label': 'Миры' }, Object.values(tabEls))),
       h('div', { class: 'top-right' }, h('button', { class: 'icon-btn', title: 'Тематика', 'aria-label': 'Тематика', onclick: themeSheet }, icon('frames')),
         h('button', { class: 'ava', title: `${S.me.name} · настройки`, 'aria-label': 'Профиль и настройки', onclick: () => go('settings') }, (S.me.name || 'V')[0].toUpperCase()))),
     sub, main));
   vitView = buildVit(); main.append(vitView.root);
   window.addEventListener('hashchange', () => go(location.hash.slice(1) || 'home', true));
   window.addEventListener('vit:theme', () => { if (S.view === 'home') go('home'); });
+  window.addEventListener('resize', () => { slideTo(tabsEl, Object.values(tabEls).find((el) => el.classList.contains('on'))); slideTo(sub, subEls[S.view]); });
   // the room shifts a little against the pointer, so the glass feels like it floats in front of it
   let px = 0, py = 0, tx = 0, ty = 0, moving = 0; const room = document.getElementById('room');
   const drift = () => { px += (tx - px) * 0.06; py += (ty - py) * 0.06; room.style.setProperty('--px', px.toFixed(2) + 'px'); room.style.setProperty('--py', py.toFixed(2) + 'px'); moving = Math.abs(tx - px) + Math.abs(ty - py) > 0.05 ? requestAnimationFrame(drift) : 0; };
@@ -84,18 +87,30 @@ function badges() {
   for (const [id, n] of [['memory', S.memBadge], ['requests', S.reqBadge]]) { subEls[id].querySelector('.badge')?.remove(); if (n) subEls[id].append(h('span', { class: 'badge' }, String(n))); }
   tabEls.vit.querySelector('.badge')?.remove(); const all = S.memBadge + S.reqBadge; if (all && !VIT_GROUP.has(S.view)) tabEls.vit.append(h('span', { class: 'badge' }, String(all)));
 }
-function go(view, fromHash, arg) {
+let navT = null;
+/** Go to a screen. `origin` is the element the screen opens from: it grows into the new screen (a shared-element transition). */
+function go(view, fromHash, arg, origin) {
   if (!KNOWN.has(view)) view = 'home';
-  S.view = view; if (!fromHash && location.hash.slice(1) !== view) history.replaceState(null, '', '#' + view);
-  const inVit = VIT_GROUP.has(view);
-  for (const [id, el] of Object.entries(tabEls)) { const on = id === view || (id === 'vit' && inVit); el.classList.toggle('on', on); el.setAttribute('aria-current', on ? 'page' : 'false'); }
-  for (const [id, el] of Object.entries(subEls)) el.classList.toggle('on', id === view);
-  sub.classList.toggle('hide', !inVit); badges();
-  document.body.classList.toggle('bare', view === 'home' && getTheme() === 'spatial');            // the spatial home carries its own navigation, like a window in the room
-  current?.destroy?.(); current?.root.remove(); current = null;
-  vitView.root.classList.toggle('hide', view !== 'vit'); if (view === 'vit') { vitView.resume(); return vitView.focus(); } vitView.pause();
-  if (WORLDS.has(view)) return openWorld(view, arg);
-  current = { home: () => viewHome(ctx()), memory: viewMemory, works: viewWorks, requests: viewRequests, agents: viewAgents, settings: viewSettings }[view](arg); main.append(current.root);
+  const swap = () => {
+    S.view = view; if (!fromHash && location.hash.slice(1) !== view) history.replaceState(null, '', '#' + view);
+    const inVit = VIT_GROUP.has(view);
+    for (const [id, el] of Object.entries(tabEls)) { const on = id === view || (id === 'vit' && inVit); el.classList.toggle('on', on); el.setAttribute('aria-current', on ? 'page' : 'false'); }
+    for (const [id, el] of Object.entries(subEls)) el.classList.toggle('on', id === view);
+    sub.classList.toggle('hide', !inVit); badges();
+    document.body.classList.toggle('bare', view === 'home' && getTheme() === 'spatial');            // the spatial home carries its own navigation, like a window in the room
+    slideTo(tabsEl, Object.values(tabEls).find((el) => el.classList.contains('on'))); slideTo(sub, subEls[view]);
+    current?.destroy?.(); current?.root.remove(); current = null;
+    vitView.root.classList.toggle('hide', view !== 'vit'); if (view === 'vit') { vitView.resume(); return vitView.focus(); } vitView.pause();
+    if (WORLDS.has(view)) return openWorld(view, arg);
+    current = { home: () => viewHome(ctx()), memory: viewMemory, works: viewWorks, requests: viewRequests, agents: viewAgents, settings: viewSettings }[view](arg); main.append(current.root);
+  };
+  const shown = () => (S.view === 'vit' ? vitView.root : current?.root);
+  if (!booted || !document.startViewTransition || matchMedia('(prefers-reduced-motion: reduce)').matches || document.hidden) { booted = true; return swap(); }
+  navT?.skipTransition();                                                                           // a new tap never waits for the previous animation
+  const from = origin?.isConnected ? origin : null; if (from) from.style.viewTransitionName = 'open';
+  document.documentElement.dataset.nav = from ? 'open' : 'fade';
+  const t = (navT = document.startViewTransition(() => { if (from) from.style.viewTransitionName = ''; swap(); const el = shown(); if (from && el) el.style.viewTransitionName = 'open'; }));
+  t.finished.finally(() => { if (navT === t) navT = null; const el = shown(); if (el) el.style.viewTransitionName = ''; });
 }
 async function openWorld(id, arg) {                       // a world is a file in /worlds — loaded the first time it is opened
   const wait = (current = { root: h('div', { class: 'view loading' }, h('i')) }); main.append(wait.root);
@@ -152,7 +167,7 @@ function buildVit() {
       h('button', { class: 'icon-btn', title: 'История', 'aria-label': 'История диалогов', onclick: (e) => { e.stopPropagation(); historyPop(); } }, icon('clock')),
       h('button', { class: 'icon-btn', title: 'Новый диалог', 'aria-label': 'Новый диалог', onclick: newConv }, icon('plus'))),
     stage, thread, h('div', { class: 'composer-wrap' }, h('div', { class: 'composer glass' }, input, mic, sendBtn), h('div', { class: 'foot' }, 'VIT может ошибаться. Важное проверяйте.')));
-  const orb = createOrb(canvas, { size: 760 }); let abort = null, pop = null;
+  const orb = createOrb(canvas, { size: 760, fit: 0.44 }); let abort = null, pop = null;
   const setState = (t) => { stateEl.textContent = t || ''; };
   const bottom = (force) => { if (force || thread.scrollHeight - thread.scrollTop - thread.clientHeight < 160) thread.scrollTop = thread.scrollHeight; };
   const grow = () => { input.style.height = 'auto'; input.style.height = Math.min(160, input.scrollHeight) + 'px'; };
@@ -233,7 +248,11 @@ function buildVit() {
 }
 
 // ── memory: the console ─────────────────────────────────────────────────────
-const seg = (items, value, onPick) => { const el = h('div', { class: 'seg', role: 'group' }); const paint = (v) => el.replaceChildren(...items.map(([id, label]) => h('button', { class: id === v ? 'on' : '', 'aria-pressed': String(id === v), onclick: () => { paint(id); onPick(id); } }, label))); paint(value); return el; };
+function seg(items, value, onPick) {
+  const el = h('div', { class: 'seg', role: 'group' }), btns = items.map(([id, label]) => h('button', { 'data-id': id, onclick: () => { paint(id); onPick(id); } }, label));
+  const paint = (v) => { btns.forEach((b) => { const on = b.dataset.id === v; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); }); slideTo(el, btns.find((b) => b.dataset.id === v)); };
+  el.append(...btns); requestAnimationFrame(() => paint(value)); btns.forEach((b) => b.classList.toggle('on', b.dataset.id === value)); return el;
+}
 const toggle = (on, onFlip) => { const el = h('button', { class: 'switch' + (on ? ' on' : ''), role: 'switch', 'aria-checked': String(on), onclick: () => { on = !on; el.classList.toggle('on', on); el.setAttribute('aria-checked', String(on)); onFlip(on); } }); return el; };
 function viewMemory() {
   S.memBadge = 0; badges();
@@ -243,7 +262,8 @@ function viewMemory() {
   const hidden = new Set(); let graph = null, data = { nodes: [], edges: [] }, picked = null, order = 'new';
   const side = h('div', { class: 'glass mem-side' }, h('div', { class: 'head' }, search, h('div', { class: 'row' }, seg([['new', 'Новые'], ['strong', 'Важные']], order, (v) => { order = v; paintList(); }), h('span', { class: 'grow' }), h('a', { class: 'btn sm ghost', href: '/api/export', download: '' }, 'Выгрузить'))), list, detail);
   const root = h('div', { class: 'view mem' }, stats, space, side);
-  const shown = () => { const q = search.value.trim().toLowerCase(); return data.nodes.filter((n) => !hidden.has(n.cat) && (!q || n.text.toLowerCase().includes(q) || (n.quote || '').toLowerCase().includes(q))); };
+  // search forgives typos (Fuse.js): «помищение» still finds «помещение»
+  const shown = () => { const q = search.value.trim(), pool = data.nodes.filter((n) => !hidden.has(n.cat)); return q ? new Fuse(pool, { keys: ['text', 'quote'], threshold: 0.38, ignoreLocation: true }).search(q).map((r) => r.item) : pool; };
   const neighbours = (id) => data.edges.filter((e) => e.a === id || e.b === id).map((e) => data.nodes.find((n) => n.id === (e.a === id ? e.b : e.a))).filter(Boolean);
 
   function paintStats() {
@@ -258,7 +278,7 @@ function viewMemory() {
   function paintCats() { cats.replaceChildren(...S.cats.map((c) => { const n = data.nodes.filter((x) => x.cat === c.id).length;
     return h('button', { class: 'cat' + (hidden.has(c.id) ? ' off' : ''), 'aria-pressed': String(!hidden.has(c.id)), onclick: () => { hidden.has(c.id) ? hidden.delete(c.id) : hidden.add(c.id); graph.filter(hidden); paintCats(); paintList(); } }, h('i', { style: `background:${c.color}` }), c.name, h('small', null, String(n))); })); }
   function paintList() {
-    const items = shown().sort((a, b) => (order === 'strong' ? b.weight - a.weight || b.id - a.id : b.id - a.id)), top = Math.max(1, ...data.nodes.map((n) => n.weight));
+    const found = shown(), items = search.value.trim() ? found : found.sort((a, b) => (order === 'strong' ? b.weight - a.weight || b.id - a.id : b.id - a.id)), top = Math.max(1, ...data.nodes.map((n) => n.weight));
     graph?.match(search.value.trim() ? new Set(items.map((n) => n.id)) : null);
     list.replaceChildren(...(items.length ? items.map((n) => { const c = catOf(n.cat); return h('button', { class: 'mem-item' + (picked === n.id ? ' on' : ''), 'data-id': n.id, onclick: () => select(n) }, h('i', { style: `background:${c.color}` }), h('p', null, n.text),
       h('span', { class: 'cap' }, c.name, h('span', null, when(n.created)), h('span', { class: 'bar', title: 'Насколько часто это всплывает' }, h('u', { style: `width:${Math.max(18, (n.weight / top) * 100)}%` })))); })
@@ -332,8 +352,8 @@ const FAQ = [
 ];
 function viewSettings(arg) {
   const body = h('div', { class: 'stack' }); let tab = arg?.tab || 'profile';
-  const root = h('div', { class: 'view' }, h('div', { class: 'page scroll' }, h('div', { class: 'page-in', style: 'max-width:860px' }, h('h1', null, 'Настройки'), h('p', { class: 'sub-line' }, 'Профиль, модели, поведение, данные и помощь.'),
-    h('div', { class: 'set-tabs' }, seg([['profile', 'Профиль'], ['models', 'Модели'], ['behave', 'Поведение'], ['data', 'Данные'], ['help', 'Помощь']], tab, (t) => { tab = t; paint(); })), body)));
+  const root = h('div', { class: 'view' }, h('div', { class: 'page scroll' }, h('div', { class: 'page-in', style: 'max-width:860px' }, h('h1', null, 'Настройки'), h('p', { class: 'sub-line' }, 'Профиль, модели, поведение, данные, открытые проекты и помощь.'),
+    h('div', { class: 'set-tabs' }, seg([['profile', 'Профиль'], ['models', 'Модели'], ['behave', 'Поведение'], ['data', 'Данные'], ['projects', 'Проекты'], ['help', 'Помощь']], tab, (t) => { tab = t; paint(); })), body)));
   const WHY = { eco: 'Всё делает локальная модель — бесплатно. Облако подключается, только если она не отвечает.', balanced: 'Разговор — на локальной модели, сложная работа агентов — в облаке.', cloud: 'Всё идёт в облако; локальная модель — запасная.' };
 
   function ladder(box, d) {
@@ -377,7 +397,7 @@ function viewSettings(arg) {
         h('div', { class: 'card' }, h('div', { class: 'row' }, h('span', { class: 'ava', style: 'width:46px;height:46px;font-size:17px' }, S.me.name[0].toUpperCase()), h('div', { class: 'grow' }, h('h3', null, S.me.name), h('p', { class: 'hint' }, S.me.kind === 'viton' ? `VITON ID · ${S.me.email}` : 'Локальный профиль — без аккаунта')),
           h('button', { class: 'btn sm ghost', onclick: async () => { await api('/api/auth/logout', { method: 'POST', body: {} }); location.hash = ''; location.reload(); } }, 'Выйти'))),
         h('div', { class: 'card' }, h('div', { class: 'row' }, h('div', { class: 'grow' }, h('h3', null, 'Тематика'), h('p', { class: 'hint' }, 'Пять обликов приложения. Меняется главная и все экраны.')), h('button', { class: 'btn sm', onclick: themeSheet }, 'Выбрать'))),
-        h('div', { class: 'card soft' }, h('h3', null, `VIT ${S.version} · открытый тест`), h('p', { class: 'hint' }, 'Приложение экосистемы VITON13. В тесте всё бесплатно; вход по VITON ID или без аккаунта.')));
+        h('div', { class: 'card soft' }, h('h3', null, `VITON13 ${S.version} · открытый тест`), h('p', { class: 'hint' }, 'Приложение экосистемы VITON13. В тесте всё бесплатно; вход по VITON ID или без аккаунта.')));
       else if (tab === 'models') { const a = h('div', { class: 'card' }), b = h('div', { class: 'card' }); body.replaceChildren(a, b); ladder(a, await api('/api/models')); await catalog(b, a); }
       else if (tab === 'behave') { const s = await api('/api/settings');
         const tgToken = h('input', { class: 'field sm', type: 'password', placeholder: s.telegram.set ? 'Токен бота сохранён' : 'Токен бота', autocomplete: 'off', 'aria-label': 'Токен Telegram-бота' }), tgChat = h('input', { class: 'field sm', value: s.telegram.chat, placeholder: 'ID чата команды', 'aria-label': 'ID чата' });
@@ -391,6 +411,10 @@ function viewSettings(arg) {
         body.replaceChildren(h('div', { class: 'card' }, h('h3', null, 'Ваши данные'), h('p', { class: 'hint' }, 'Диалоги, память и работы лежат в одном файле на этом компьютере. Их можно выгрузить или удалить в любой момент.'),
           h('div', { style: 'margin-top:8px' }, h('div', { class: 'kv' }, h('span', null, 'Сообщений'), String(s.stats.messages)), h('div', { class: 'kv' }, h('span', null, 'Узлов памяти'), String(s.stats.nodes)), h('div', { class: 'kv' }, h('span', null, 'Работ'), String(s.stats.jobs))),
           h('div', { class: 'row', style: 'margin-top:12px;flex-wrap:wrap' }, h('a', { class: 'btn sm ghost', href: '/api/export', download: '' }, 'Выгрузить всё'), h('button', { class: 'btn sm danger', onclick: async () => { if (!confirm('Удалить все диалоги, память, работы и заявки? Это нельзя отменить.')) return; await api('/api/data', { method: 'DELETE' }); location.hash = ''; location.reload(); } }, 'Удалить всё')))); }
+      else if (tab === 'projects') { const d = await api('/api/projects'), groups = [...new Set(d.items.map((p) => p.group))], on = d.items.filter((p) => p.state === 'on').length;
+        body.replaceChildren(h('div', { class: 'card soft' }, h('h3', null, 'Открытые проекты внутри VITON13'), h('p', { class: 'hint' }, `Приложение стоит на открытом коде с GitHub: ${d.items.length} проектов, сейчас работают ${on}. Здесь видно, что делает каждый и жив ли он на этом компьютере.`)),
+          ...groups.map((g) => h('div', { class: 'card' }, h('h3', { style: 'margin-bottom:4px' }, g), d.items.filter((p) => p.group === g).map((p) => h('div', { class: 'proj' }, h('span', { class: 'dot ' + (p.state === 'on' ? 'ok' : p.state === 'idle' ? 'none' : 'limit') }),
+            h('div', { class: 'grow' }, h('div', { class: 'name' }, h('a', { href: p.url, target: '_blank', rel: 'noopener noreferrer' }, p.name), h('span', { class: 'cap' }, p.license)), h('p', null, p.role), h('small', { class: 'cap' }, p.note))))))); }
       else body.replaceChildren(
         h('div', { class: 'card faq' }, h('h3', { style: 'margin-bottom:6px' }, 'Вопросы и ответы'), FAQ.map(([q, a]) => h('details', null, h('summary', null, q), h('p', null, a)))),
         h('div', { class: 'card' }, h('h3', { style: 'margin-bottom:12px' }, 'Клавиши'), h('div', { class: 'keys' }, h('kbd', null, 'Enter'), 'Отправить сообщение', h('kbd', null, 'Shift + Enter'), 'Новая строка', h('kbd', null, '← →'), 'Листать миры на ленте и статьи на полке', h('kbd', null, 'Esc'), 'Закрыть окно или пропустить приветствие')),

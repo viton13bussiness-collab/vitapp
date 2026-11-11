@@ -24,7 +24,8 @@ const LOCAL_HOST = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
 const json = (res, code, body) => { res.writeHead(code, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }); res.end(JSON.stringify(body)); };
 const fail = (res, code, message) => json(res, code, { ok: false, message });
 const cookie = (req) => Object.fromEntries((req.headers.cookie || '').split(';').map((c) => c.trim().split('=')).filter((p) => p[0]).map(([k, ...v]) => [k, decodeURIComponent(v.join('='))]));
-const setCookie = (res, token) => res.setHeader('set-cookie', `vit=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${token ? 31536000 : 0}`);
+const COOKIE = `vit${PORT === 5313 ? '' : PORT}`;
+const setCookie = (res, token) => res.setHeader('set-cookie', `${COOKIE}=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${token ? 31536000 : 0}`);
 async function raw(req, limit) { const chunks = []; let n = 0; for await (const c of req) { n += c.length; if (n > limit) throw Object.assign(new Error('Слишком большой запрос'), { http: 413 }); chunks.push(c); } return Buffer.concat(chunks); }
 async function body(req) { const b = await raw(req, 1e6); if (!b.length) return {}; try { return JSON.parse(b.toString('utf8')); } catch { throw Object.assign(new Error('Некорректный запрос'), { http: 400 }); } }
 const pubUser = (u) => u && { id: u.id, kind: u.kind, name: u.name, email: u.email };
@@ -121,7 +122,7 @@ export const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://local');
     if (HOST === '127.0.0.1' && !LOCAL_HOST.test(req.headers.host || '')) { res.writeHead(403); return res.end(); }                      // DNS rebinding
     if (req.method !== 'GET' && req.headers.origin && new URL(req.headers.origin).host !== req.headers.host) { res.writeHead(403); return res.end(); }   // cross-site writes
-    const token = cookie(req).vit || '', user = userByToken(token);
+    const token = cookie(req)[COOKIE] || '', user = userByToken(token);
     if (url.pathname.startsWith('/api/')) return await api(req, res, url, user, token);
     if (url.pathname.startsWith('/workspace/')) {                                     // what the agents produced; pages open sandboxed
       const [, , jobDir, name] = url.pathname.split('/'), id = Number(String(jobDir || '').replace('job-', ''));
@@ -139,6 +140,6 @@ export const server = http.createServer(async (req, res) => {
 });
 
 export function start(port = PORT) {
-  return new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, HOST, () => { console.log(`VIT ${VERSION} · http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${port}`); resolve(port); }); });
+  return new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, HOST, () => { console.log(`VITON13 ${VERSION} · http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${port}`); resolve(port); }); });
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) start().catch((e) => { console.error(e.code === 'EADDRINUSE' ? `Порт ${PORT} занят. Задайте другой: VIT_PORT=5314 npm start` : e); process.exit(1); });

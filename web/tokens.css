@@ -15,6 +15,7 @@
   --r-sm: 12px; --r: 18px; --r-lg: 28px; --r-xl: 36px;
   --shadow: 0 10px 40px rgba(0, 0, 0, 0.35); --shadow-lg: 0 24px 80px rgba(0, 0, 0, 0.5);
   --ease: cubic-bezier(0.16, 1, 0.3, 1); --spring: cubic-bezier(0.34, 1.4, 0.5, 1);
+  --slide: linear(0, 0.22 6%, 0.6 14%, 0.86 22%, 1.0 30%, 1.045 38%, 1.05 44%, 1.03 54%, 1.008 68%, 1);
   --logo-invert: 1;
   color-scheme: dark;
 }
@@ -58,9 +59,13 @@ select.field option { background: var(--panel-solid); color: var(--ink); }
 .icon { width: 20px; height: 20px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .icon-btn { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; color: var(--ink2); transition: background 0.2s, color 0.2s, transform 0.25s var(--ease); }
 .icon-btn:hover { background: var(--soft2); color: var(--ink); } .icon-btn:active { transform: scale(0.92); }
-.seg { display: inline-flex; background: var(--soft); border-radius: 999px; padding: 3px; gap: 2px; }
+.seg { display: inline-flex; background: var(--soft); border-radius: 999px; padding: 3px; gap: 2px; position: relative; }
+/* the pill that slides under the chosen item (tabs and segmented controls) */
+.ind { position: absolute; left: 0; top: 0; width: var(--w, 0px); height: var(--h, 0px); transform: translate(var(--x, 0px), var(--y, 0px)); border-radius: 999px; background: var(--pill-bg); box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18); transition: transform 0.55s var(--slide), width 0.55s var(--slide), opacity 0.25s; pointer-events: none; opacity: var(--o, 0); }
+.ind.still { transition: none; }
 .seg button { height: 32px; padding: 0 15px; border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--ink2); transition: all 0.3s var(--ease); }
-.seg button.on { background: var(--pill-bg); color: var(--pill-ink); box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18); }
+.seg button { position: relative; z-index: 1; } .seg button.on { color: var(--pill-ink); }
+.seg:not(:has(.ind)) button.on { background: var(--pill-bg); box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18); }
 /* the switch: a lit track with an I / O mark on the knob */
 .switch { position: relative; width: 54px; height: 32px; border-radius: 999px; flex: none; background: var(--soft2); box-shadow: inset 0 0 0 1px var(--panel-line), inset 0 2px 6px rgba(0, 0, 0, 0.25); transition: background 0.35s var(--ease), box-shadow 0.35s var(--ease); }
 .switch::before { content: ""; position: absolute; top: 3px; left: 3px; width: 26px; height: 26px; border-radius: 50%; background: linear-gradient(180deg, #ffffff, #dcdce2); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35), inset 0 -1px 0 rgba(0, 0, 0, 0.08); transition: transform 0.4s var(--spring); }

@@ -1,11 +1,11 @@
 {
-  "name": "vit",
-  "version": "0.2.0",
-  "description": "VIT — персональный ИИ-агент VITON13 OS. Не чат-бот, который отвечает, а агент, который выполняет.",
+  "name": "viton13",
+  "version": "0.3.0",
+  "description": "VITON13 — приложение экосистемы: агент VIT, VJOURNAL, Store, Медицина и Hub.",
   "type": "module",
   "main": "electron/main.cjs",
   "bin": {
-    "vit": "bin/vit.mjs"
+    "viton13": "bin/vit.mjs"
   },
   "engines": {
     "node": ">=22.13"
@@ -13,11 +13,13 @@
   "scripts": {
     "start": "node bin/vit.mjs",
     "server": "node server/index.mjs",
-    "app": "electron ."
+    "app": "electron .",
+    "mac": "bash scripts/make-mac-app.sh"
   },
   "devDependencies": {
     "electron": "42.5.0"
   },
   "license": "UNLICENSED",
-  "private": true
+  "private": true,
+  "productName": "VITON13"
 }

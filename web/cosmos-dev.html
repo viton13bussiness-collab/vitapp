@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ru" data-theme="spatial">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VIT · cosmos</title>
+<link rel="stylesheet" href="/tokens.css">
+<style>
+  body { background: #07070a; overflow: hidden; } :root[data-theme="aurora"] body { background: #fff; }
+  #stage { position: fixed; inset: 0; display: grid; place-items: center; }
+  #c { width: min(86vmin, 900px); height: min(86vmin, 900px); display: block; }
+  #bar { position: fixed; left: 12px; top: 12px; display: flex; flex-wrap: wrap; gap: 6px; max-width: 520px; z-index: 5; }
+  #bar button { height: 30px; padding: 0 12px; border-radius: 999px; background: var(--soft2); color: var(--ink); font-size: 12.5px; font-weight: 600; }
+  #info { position: fixed; right: 12px; top: 12px; font: 12px var(--mono); color: var(--mute); text-align: right; z-index: 5; white-space: pre; }
+</style>
+</head>
+<body>
+<div id="stage"><canvas id="c"></canvas></div>
+<div id="bar"></div><div id="info"></div>
+<script type="module">
+// Stand for the cosmos: ?webgl=0 forces the 2D fallback, ?size=420 a smaller canvas, ?points=…
+import { createOrb } from '/orb.js';
+import { runIntro } from '/intro.js';
+const q = new URLSearchParams(location.search), canvas = document.getElementById('c'), bar = document.getElementById('bar'), info = document.getElementById('info');
+if (q.get('size')) canvas.style.width = canvas.style.height = q.get('size') + 'px';
+const orb = (window.orb = createOrb(canvas, { size: 900, points: +(q.get('points') || 15000), wheel: true, webgl: q.get('webgl') === '0' ? false : undefined }));
+const btn = (label, fn) => { const b = document.createElement('button'); b.textContent = label; b.onclick = fn; bar.append(b); };
+for (const s of ['idle', 'listen', 'think', 'speak']) btn(s, () => { orb.state(s); if (s === 'listen') orb.amp(0.7); });
+for (const s of ['pinwheel', 'globe', 'scatter']) btn('→ ' + s, () => orb.shape(s, 1600));
+btn('burst', () => orb.burst()); btn('pause', () => orb.pause()); btn('resume', () => orb.resume());
+btn('theme', () => { const r = document.documentElement; r.dataset.theme = r.dataset.theme === 'aurora' ? 'spatial' : 'aurora'; });
+btn('intro', () => runIntro()); btn('intro short', () => runIntro({ short: true }));
+let frames = 0, t0 = performance.now(), fps = 0; const tick = () => { frames++; const now = performance.now(); if (now - t0 > 1000) { fps = Math.round((frames * 1000) / (now - t0)); frames = 0; t0 = now; } requestAnimationFrame(tick); }; tick();
+orb.ready.then((kind) => setInterval(() => { info.textContent = `${kind} · ${canvas.width}×${canvas.height} px · ${fps} fps\ndrag — turn · move — part the dust · tap — wave · wheel — zoom`; }, 500));
+window.fpsNow = () => fps;
+</script>
+</body>
+</html>

@@ -82,7 +82,7 @@ const PHOTO = { vit: '/media/vit.jpg', journal: '/media/journal.jpg', store: '/m
 /** A world's picture as an element. opts.live puts the turning dust over VIT's photograph. */
 function picture(id, orbs, opts = {}) {
   const box = h('div', { class: `art art-${id}` }, h('img', { src: PHOTO[id], alt: '', loading: 'lazy', decoding: 'async', draggable: 'false' }));
-  if (id === 'vit' && opts.live) { const cv = h('canvas', { 'aria-hidden': 'true' }); box.append(cv); orbs.push(createOrb(cv, { size: opts.size || 420, points: opts.points || 5200 })); }
+  if (id === 'vit' && opts.live) { const cv = h('canvas', { 'aria-hidden': 'true' }); box.append(cv); orbs.push(createOrb(cv, { size: opts.size || 420, points: opts.points || 5200, interactive: !!opts.interactive })); }
   return box;
 }
 const thumb = (id) => h('div', { class: `art art-${id}` }, h('img', { src: PHOTO[id], alt: '', loading: 'lazy', decoding: 'async' }));
@@ -105,31 +105,32 @@ const LAYOUT = {
   spatial(root, ctx, orbs) {
     let sel = 0, alive = true; const hero = h('div', { class: 'sp-hero' }), list = h('div', { class: 'sp-rows' }), open = h('button', { class: 'sp-open' });
     const info = counts(ctx, () => alive && paintList()), pick = (i) => { sel = i; paint(); };
+    let dragged = false, down = null; hero.addEventListener('pointerdown', (e) => { down = [e.clientX, e.clientY]; dragged = false; }, true); hero.addEventListener('pointermove', (e) => { if (down && Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 7) dragged = true; }, true); hero.addEventListener('pointerup', () => { down = null; setTimeout(() => { dragged = false; }, 0); }, true);
     const nav = h('div', { class: 'sp-nav' }, h('button', { class: 'sp-burger', 'aria-label': 'Тематика', title: 'Тематика', onclick: (e) => { e.stopPropagation(); themeSheet(); } }, h('i'), h('i'), h('i')),
       h('div', { class: 'sp-pills' }, [['home', 'Главная'], ['vit', 'VIT'], ['memory', 'Память']].map(([id, t]) => h('button', { class: id === 'home' ? 'on' : '', onclick: (e) => { e.stopPropagation(); if (id !== 'home') ctx.go(id); } }, t))),
       h('button', { class: 'sp-contact', onclick: (e) => { e.stopPropagation(); ctx.go('settings'); } }, 'Профиль'));
     function paintList() { list.replaceChildren(...WORLDS.map((x, i) => h('button', { class: 'sp-row' + (i === sel ? ' on' : ''), onclick: () => pick(i), ondblclick: () => ctx.go(x.id) }, thumb(x.id), h('span', null, h('b', null, x.name), h('small', null, info[x.id] || x.cap)), icon('chev')))); }
     function paint() { const w = WORLDS[sel], nx = WORLDS[(sel + 1) % WORLDS.length]; orbs.splice(0).forEach((o) => o.stop());
-      const pic = picture(w.id, orbs, { live: true, size: 900, points: 15000 }), text = h('h2', null, HEAD[w.id][0], h('br'), HEAD[w.id][1]);
+      const pic = picture(w.id, orbs, { live: true, size: 900, points: 15000, interactive: true }), text = h('h2', null, HEAD[w.id][0], h('br'), HEAD[w.id][1]);
       hero.replaceChildren(pic, h('div', { class: 'sp-shade' }), nav, text,
         h('div', { class: 'sp-hero-bot' },
           h('button', { class: 'sp-team', onclick: (e) => { e.stopPropagation(); ctx.go('agents'); } }, h('span', { class: 'sp-faces' }, ['#0a84ff', '#bf5af2', '#ff375f'].map((c, i) => h('i', { style: `background:${c}` }, 'СДК'[i]))), h('small', null, 'Команда агентов')),
           h('button', { class: 'sp-next', onclick: (e) => { e.stopPropagation(); pick((sel + 1) % WORLDS.length); } }, h('span', null, 'Дальше ', nx.name), thumb(nx.id))));
-      hero.onclick = () => ctx.go(w.id); hero.setAttribute('aria-label', `Открыть ${w.name}`);
-      open.textContent = `Открыть ${w.name}`; open.onclick = () => ctx.go(w.id); paintList(); }
+      hero.onclick = () => { if (!dragged) ctx.go(w.id, undefined, hero); };                                  // turning the cosmos is not a tap hero.setAttribute('aria-label', `Открыть ${w.name}`);
+      open.textContent = `Открыть ${w.name}`; open.onclick = () => ctx.go(w.id, undefined, hero); paintList(); }
     root.append(h('div', { class: 'sp-win' },
       h('div', { class: 'sp-col' }, h('div', { class: 'sp-brand' }, brand()),
         h('button', { class: 'sp-tile sp-pic', onclick: () => ctx.go('settings'), 'aria-label': 'VITON ID — профиль' }, h('img', { src: '/media/id.jpg', alt: '' })),
         h('div', { class: 'sp-tile sp-white' }, h('h3', null, 'Одна экосистема.', h('br'), 'Пять миров.'), h('p', null, 'Агент, журнал, магазин, медицина и приложения — под одним входом.'))),
       hero,
       h('div', { class: 'sp-col' }, h('div', { class: 'sp-tile sp-list' }, h('div', { class: 'sp-list-head' }, h('b', null, 'Миры'), h('button', { class: 'sp-i', 'aria-label': 'Помощь', onclick: () => ctx.go('settings', { tab: 'help' }) }, 'i')), list, open),
-        h('button', { class: 'sp-tile sp-explore', onclick: () => ctx.go('vit') }, h('img', { src: '/media/portal.jpg', alt: '' }), h('span', null, 'Спросить VIT')))));
+        h('button', { class: 'sp-tile sp-explore', onclick: (e) => ctx.go('vit', undefined, e.currentTarget) }, h('img', { src: '/media/portal.jpg', alt: '' }), h('span', null, 'Спросить VIT')))));
     paint();
     return () => { alive = false; };
   },
   ribbon(root, ctx, orbs) {
     let sel = 0; const STEP = 27, ring = h('div', { class: 'rb-ring' }), foot = h('div', { class: 'rb-foot' });
-    const panels = WORLDS.map((w, i) => h('button', { class: 'rb-panel', style: `--a:${i * STEP}deg`, onclick: () => (i === sel ? ctx.go(w.id) : pick(i)), 'aria-label': w.name }, h('span', { class: 'rb-label' }, w.name), h('div', { class: 'rb-face' }, picture(w.id, orbs, { live: true, size: 420, points: 5200 }))));
+    const panels = WORLDS.map((w, i) => h('button', { class: 'rb-panel', style: `--a:${i * STEP}deg`, onclick: (e) => (i === sel ? ctx.go(w.id, undefined, e.currentTarget.querySelector('.rb-face')) : pick(i)), 'aria-label': w.name }, h('span', { class: 'rb-label' }, w.name), h('div', { class: 'rb-face' }, picture(w.id, orbs, { live: true, size: 420, points: 5200 }))));
     const pick = (i) => { sel = Math.max(0, Math.min(WORLDS.length - 1, i)); paint(); };
     function paint() { const w = WORLDS[sel]; ring.style.setProperty('--rot', `${sel * STEP}deg`); panels.forEach((p, i) => p.classList.toggle('on', i === sel));
       foot.replaceChildren(h('button', { class: 'icon-btn', 'aria-label': 'Назад', onclick: () => pick(sel - 1), disabled: sel === 0 }, icon('back')), h('div', { class: 'rb-text' }, h('h2', null, w.name), h('p', null, w.line), h('button', { class: 'btn', onclick: () => ctx.go(w.id) }, 'Войти')), h('button', { class: 'icon-btn', 'aria-label': 'Вперёд', style: 'transform:scaleX(-1)', onclick: () => pick(sel + 1), disabled: sel === WORLDS.length - 1 }, icon('back'))); }
@@ -141,7 +142,7 @@ const LAYOUT = {
     return () => window.removeEventListener('keydown', key);
   },
   axon(root, ctx, orbs) {
-    const cv = h('canvas', { class: 'ax-dust', 'aria-hidden': 'true' }); orbs.push(createOrb(cv, { size: 1100, points: 18000 }));
+    const cv = h('canvas', { class: 'ax-dust', 'aria-hidden': 'true' }); orbs.push(createOrb(cv, { size: 1100, points: 18000, interactive: false }));
     const sect = (t, ...kids) => h('div', { class: 'ax-sect' }, h('div', { class: 'ax-h' }, `[${t}]`), kids);
     root.append(cv, h('div', { class: 'ax-left' }, h('div', { class: 'ax-tags' }, ['Агент', 'Память', 'Агенты', 'Журнал', 'Магазин', 'Тело', 'Приложения'].map((t) => h('span', null, t))),
         WORLDS.slice(1).map((w, i) => h('button', { class: 'ax-item', onclick: () => ctx.go(w.id) }, thumb(w.id), h('div', { class: 'ax-meta' }, h('span', null, w.name), h('span', null, `0${i + 2}`))))),

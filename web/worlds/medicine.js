@@ -52,23 +52,96 @@ function normalise(root, material, byHeight, to = 1) {
 }
 const disposeTree = (o) => o?.traverse((m) => { m.geometry?.dispose(); });
 
+// Real counts only: everything a widget shows is counted from the zone texts above.
+const TOTAL = { zones: ZONES.length, contains: ZONES.reduce((n, z) => n + z.contains.length, 0), complaints: ZONES.reduce((n, z) => n + z.complaints.length, 0), flags: ZONES.reduce((n, z) => n + z.redFlags.length, 0) };
+/** A ring indicator like the ones on visionOS widgets: coloured arcs that add up, a big number in the middle. */
+function ring(h, parts, total, big, small) {
+  const R = 26, C = 2 * Math.PI * R, gap = parts.length > 1 ? 3.2 : 0; let at = 0;
+  const arcs = parts.map(([v, color], i) => { const len = Math.max(0, (v / total) * C - gap); const el = `<circle r="${R}" cx="32" cy="32" fill="none" stroke="${color}" stroke-width="5.5" stroke-linecap="round" stroke-dasharray="${len.toFixed(2)} ${C.toFixed(2)}" stroke-dashoffset="${(-at).toFixed(2)}" style="--len:${len.toFixed(2)};--i:${i}"/>`; at += (v / total) * C; return el; }).join('');
+  return h('div', { class: 'md-ring' }, h('span', { style: 'display:contents', html: `<svg viewBox="0 0 64 64" aria-hidden="true"><circle r="${R}" cx="32" cy="32" fill="none" stroke="currentColor" stroke-opacity="0.12" stroke-width="5.5"/><g transform="rotate(-90 32 32)">${arcs}</g></svg>` }),
+    h('span', { class: 'md-ring-n' }, h('b', null, big), small && h('small', null, small)));
+}
+/** The two widgets under the list of zones: the whole map, or the chosen zone. */
+function widgets(h, z) {
+  const i = z ? ZONES.indexOf(z) : -1, hot = 'var(--hot)', bad = 'var(--bad)', ok = 'var(--ok)', blue = 'var(--accent)';
+  const legend = (rows) => h('ul', { class: 'md-legend' }, rows.map(([c, t]) => h('li', null, h('i', { style: `background:${c}` }), t)));
+  const a = z
+    ? h('div', { class: 'md-widget glass' }, h('div', { class: 'md-wt' }, 'Зона'), h('div', { class: 'md-wrow' }, ring(h, [[i + 1, hot]], TOTAL.zones, String(i + 1), `из ${TOTAL.zones}`), legend([[blue, `${z.contains.length} ${pl(z.contains.length, 'структура', 'структуры', 'структур')}`], [hot, `${z.complaints.length} ${pl(z.complaints.length, 'повод', 'повода', 'поводов')}`], [bad, `${z.redFlags.length} ${pl(z.redFlags.length, 'флаг', 'флага', 'флагов')}`]])))
+    : h('div', { class: 'md-widget glass' }, h('div', { class: 'md-wt' }, 'Карта тела'), h('div', { class: 'md-wrow' }, ring(h, [[TOTAL.contains, blue], [TOTAL.complaints, hot], [TOTAL.flags, bad]], TOTAL.contains + TOTAL.complaints + TOTAL.flags, String(TOTAL.zones), 'зон'), legend([[blue, `${TOTAL.contains} структур`], [hot, `${TOTAL.complaints} поводов`], [bad, `${TOTAL.flags} флагов`]])));
+  const b = z
+    ? h('div', { class: 'md-widget glass' }, h('div', { class: 'md-wt' }, 'Когда к врачу'), h('div', { class: 'md-wrow' }, ring(h, [[z.complaints.length, ok], [z.redFlags.length, bad]], z.complaints.length + z.redFlags.length, String(z.redFlags.length), 'срочно'), legend([[ok, 'Плановая проверка'], [bad, 'Срочно: 103 или 112']])))
+    : h('div', { class: 'md-widget glass' }, h('div', { class: 'md-wt' }, 'Как пользоваться'), h('p', { class: 'md-wp' }, 'Нажмите на точку на теле или на зону в списке. Тело вращается мышью или пальцем.'));
+  return [a, b];
+}
+const pl = (n, one, few, many) => (n % 10 === 1 && n % 100 !== 11 ? one : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? few : many);
+/** The zone card: what is there, why people get it checked, when it is urgent. Same in 3D and in the flat view. */
+function zoneCard(h, ctx, svg, z, organNode, close) {
+  const sect = (title, items, cls) => h('section', { class: 'md-sect ' + (cls || '') }, h('div', { class: 'cap' }, title), h('ul', null, items.map((t) => h('li', null, t))));
+  return [h('button', { class: 'icon-btn w-press md-close', 'aria-label': 'Закрыть карточку', onclick: close }, svg('x')),
+    h('div', { class: 'md-card-top' }, h('div', { class: 'md-organ' }, organNode), h('div', null, h('div', { class: 'cap' }, `Зона ${ZONES.indexOf(z) + 1} из ${ZONES.length}`), h('h2', null, z.title), h('p', null, z.summary))),
+    sect('Что здесь находится', z.contains), sect('Частые поводы провериться', z.complaints), sect('Красные флаги — срочно к врачу', z.redFlags, 'md-flags'),
+    h('button', { class: 'btn w-press md-ask', onclick: () => ctx.askVit(`Расскажи про зону «${z.title}»: что здесь находится, на какие симптомы обращать внимание и когда нужно срочно к врачу.`) }, svg('spark'), 'Спросить VIT'),
+    h('p', { class: 'md-note' }, 'Это навигация, а не диагноз. При красных флагах звоните 103 или 112.'),
+    h('p', { class: 'md-credit' }, `Орган: ${z.organName}. Модель — `, h('a', { href: 'https://www.z-anatomy.com/', target: '_blank', rel: 'noopener noreferrer' }, 'Z-Anatomy'), ', CC BY-SA 4.0. Фигура — Blender Studio, CC0.')];
+}
+const webglOK = () => { try { const c = document.createElement('canvas'); return !!(c.getContext('webgl2') || c.getContext('webgl')); } catch { return false; } };
+
+// ── the flat view: when this machine cannot draw 3D, the world still opens — the same figure as a studio render, the same zones and cards ──
+// Poster geometry (560×1200 renders): the body spans 6.5 %…93.2 % of the height, centred; one body unit = 1.857 poster widths.
+const POSTER = { top: 0.065, foot: 0.932, k: 1.857 };
+function flatView(ctx, why) {
+  const { h } = ctx; ctx.css('/worlds/_ui.css'); ctx.css(`${BASE}.css`);
+  const svg = (name) => h('span', { style: 'display:contents', html: `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true">${SVG[name]}</svg>` });
+  let sex = 'male', picked = null;
+  const img = h('img', { class: 'md-flat-img', alt: 'Фигура человека спереди', draggable: 'false' }), glow = h('div', { class: 'md-flat-glow' }), marks = h('div', { class: 'md-flat-marks' });
+  const fig = h('div', { class: 'md-flat-fig' }, img, glow, marks), stage = h('div', { class: 'md-stage md-flat' }, fig);
+  const list = h('div', { class: 'md-list' }), card = h('aside', { class: 'md-card glass scroll', 'aria-live': 'polite' }), wbox = h('div', { class: 'md-widgets' });
+  const sexSeg = h('div', { class: 'seg', role: 'group', 'aria-label': 'Фигура' });
+  const root = h('div', { class: 'view md-root md-is-flat' }, stage,
+    h('header', { class: 'md-head' }, h('div', { class: 'cap' }, 'VITON13 MEDICINE'), h('h1', null, 'Карта тела'), h('p', null, 'Нажмите на точку на теле или выберите зону в списке')),
+    h('nav', { class: 'md-side' }, h('div', { class: 'md-panel glass w-mat', style: '--d:1' }, h('div', { class: 'md-side-head' }, h('b', null, 'Зоны тела'), h('span', { class: 'cap' }, String(ZONES.length))), list, h('p', { class: 'md-note' }, 'Это навигация, а не диагноз.')), wbox),
+    card, h('div', { class: 'md-bar glass' }, sexSeg, h('button', { class: 'md-pill w-press', onclick: () => select(null) }, 'Сброс')), h('div', { class: 'md-flat-why cap' }, why));
+  const rows = new Map(), dots = new Map();
+  const place = (z) => ({ x: 0.5 + (z.side < 0 ? 0.11 : z.mark[0]) * POSTER.k * 0.4667, y: POSTER.foot - z.mark[1] * (POSTER.foot - POSTER.top) });       // 0.4667 = 560 / 1200; zones on the back sit at the flank of the front view
+  for (const z of ZONES) {
+    rows.set(z.key, list.appendChild(h('button', { class: 'md-row w-press', 'aria-pressed': 'false', onclick: () => select(picked === z ? null : z), onpointerenter: () => hover(z), onpointerleave: () => hover(null) }, h('i'), h('span', null, z.title), svg('chev'))));
+    const p = place(z); dots.set(z.key, marks.appendChild(h('button', { class: 'md-mark', style: `left:${(p.x * 100).toFixed(2)}%;top:${(p.y * 100).toFixed(2)}%;opacity:1`, 'aria-label': z.title, onclick: () => select(picked === z ? null : z), onpointerenter: () => hover(z), onpointerleave: () => hover(null) }, h('i'), h('span', null, z.title))));
+  }
+  function glowAt(z, strong) { if (!z) { glow.style.opacity = 0; return; } const p = place(z), r = Math.max(...z.glow.map((g) => g[3])) * (z.glow.length > 1 ? 1.9 : 1.2);
+    glow.style.cssText = `left:${(p.x * 100).toFixed(2)}%;top:${(p.y * 100).toFixed(2)}%;width:${(r * POSTER.k * 100 * 2).toFixed(1)}%;opacity:${strong ? 1 : 0.45}`; }
+  function hover(z) { if (!picked) glowAt(z, false); for (const [k, d] of dots) d.classList.toggle('hover', z?.key === k); }
+  function select(z) { picked = z; glowAt(z, true);
+    for (const [k, r] of rows) { r.classList.toggle('on', z?.key === k); r.setAttribute('aria-pressed', String(z?.key === k)); } for (const [k, d] of dots) d.classList.toggle('on', z?.key === k);
+    root.classList.toggle('picked', !!z); wbox.replaceChildren(...widgets(h, z));
+    if (!z) return card.replaceChildren();
+    card.replaceChildren(...zoneCard(h, ctx, svg, z, h('img', { class: 'md-organ-poster', src: `${BASE}/organs/${z.organ}-poster.webp`, alt: '' }), () => select(null))); card.scrollTop = 0; }
+  function setSex(next) { sex = next; img.src = `${BASE}/body/${sex}-poster.webp`;
+    sexSeg.replaceChildren(...[['male', 'Муж', 'чина'], ['female', 'Жен', 'щина']].map(([id, a, b]) => h('button', { class: id === sex ? 'on' : '', 'aria-pressed': String(id === sex), 'aria-label': a + b, onclick: () => id !== sex && setSex(id) }, a, h('span', null, b)))); }
+  img.addEventListener('load', () => stage.classList.add('shown'), { once: true });
+  const onKey = (e) => { if (e.key === 'Escape' && picked) select(null); }; document.addEventListener('keydown', onKey);
+  setSex('male'); wbox.replaceChildren(...widgets(h, null));
+  return { root, destroy() { document.removeEventListener('keydown', onKey); } };
+}
+
 export default function view(ctx) {
-  const { h } = ctx; ctx.css(`${BASE}.css`);
+  if (!webglOK()) return flatView(ctx, 'Упрощённый вид: 3D на этом устройстве не запускается');
+  const { h } = ctx; ctx.css('/worlds/_ui.css'); ctx.css(`${BASE}.css`);
   const svg = (name) => h('span', { style: 'display:contents', html: `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true">${SVG[name]}</svg>` });
   const canvas = h('canvas', { class: 'md-canvas', 'aria-label': 'Трёхмерная фигура человека. Нажмите на зону тела.' }), marks = h('div', { class: 'md-marks' }), loading = h('div', { class: 'md-loading cap' }, 'Загружаю фигуру…');
   const stage = h('div', { class: 'md-stage' }, canvas, marks, loading);
-  const list = h('div', { class: 'md-list' }), card = h('aside', { class: 'md-card glass scroll', 'aria-live': 'polite' });
+  canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); loading.textContent = '3D-фигура остановилась. Откройте раздел ещё раз.'; loading.classList.remove('hide'); });
+  const list = h('div', { class: 'md-list' }), card = h('aside', { class: 'md-card glass scroll', 'aria-live': 'polite' }), wbox = h('div', { class: 'md-widgets' });
   const sexSeg = h('div', { class: 'seg', role: 'group', 'aria-label': 'Фигура' });
   const bar = h('div', { class: 'md-bar glass' },
-    h('button', { class: 'md-pill', onclick: () => lookAt(0) }, 'Перед'), h('button', { class: 'md-pill', onclick: () => lookAt(Math.PI) }, 'Спина'), sexSeg,
-    h('button', { class: 'md-pill', onclick: () => { select(null); lookAt(0.35, true); } }, 'Сброс'));
+    h('button', { class: 'md-pill w-press', onclick: () => lookAt(0) }, 'Перед'), h('button', { class: 'md-pill w-press', onclick: () => lookAt(Math.PI) }, 'Спина'), sexSeg,
+    h('button', { class: 'md-pill w-press', onclick: () => { select(null); lookAt(0.35, true); } }, 'Сброс'));
   const root = h('div', { class: 'view md-root' }, stage,
     h('header', { class: 'md-head' }, h('div', { class: 'cap' }, 'VITON13 MEDICINE'), h('h1', null, 'Карта тела'), h('p', null, 'Нажмите на зону тела или выберите её в списке')),
-    h('nav', { class: 'md-side glass', 'aria-label': 'Зоны тела' }, h('div', { class: 'md-side-head' }, h('b', null, 'Зоны тела'), h('span', { class: 'cap' }, String(ZONES.length))), list, h('p', { class: 'md-note' }, 'Это навигация, а не диагноз.')),
+    h('nav', { class: 'md-side', 'aria-label': 'Зоны тела' }, h('div', { class: 'md-panel glass w-mat', style: '--d:1' }, h('div', { class: 'md-side-head' }, h('b', null, 'Зоны тела'), h('span', { class: 'cap' }, String(ZONES.length))), list, h('p', { class: 'md-note' }, 'Это навигация, а не диагноз.')), wbox),
     card, bar);
 
   // ── scene ──
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
+  let renderer; try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' }); } catch { return flatView(ctx, 'Упрощённый вид: 3D на этом устройстве не запускается'); }
   renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1)); renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.95;
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;
   const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(27, 1, 0.1, 30); camera.position.set(0.95, 0.68, 2.6);
@@ -126,17 +199,17 @@ export default function view(ctx) {
     sex = next; sexSeg.replaceChildren(...[['male', 'Муж', 'чина'], ['female', 'Жен', 'щина']].map(([id, a, b]) => h('button', { class: id === sex ? 'on' : '', 'aria-pressed': String(id === sex), 'aria-label': a + b, onclick: () => id !== sex && setSex(id) }, a, h('span', null, b))));
     if (!bodies[next]) { loading.classList.remove('hide'); try { bodies[next] = normalise((await gltf.loadAsync(`${BASE}/body/${next}.glb`)).scene, skin, true); } catch { loading.textContent = 'Не получилось загрузить фигуру'; return; } }
     if (dead || sex !== next) return;
-    if (body) scene.remove(body); body = bodies[next]; scene.add(body); body.updateMatrixWorld(true); anchor(); loading.classList.add('hide'); applyZone();
+    if (body) scene.remove(body); body = bodies[next]; scene.add(body); body.updateMatrixWorld(true); anchor(); loading.classList.add('hide'); applyZone(); stage.classList.add('shown');
   }
 
   // ── camera moves ──
-  let fly = null, idleAt = performance.now(), shift = 0, shiftT = 0;
+  let fly = null, idleAt = performance.now(), shift = 0, shiftT = 0; const fv = { t: 0, p: 0, r: 0 };
   const sph = new THREE.Spherical(), tmp = new THREE.Vector3();
   function lookAt(theta, wide, zone) {
     const a = zone && anchors.get(zone.key); fly = { theta, phi: zone ? 1.42 : 1.5, radius: zone ? (zone.key === 'head' ? 2.1 : 2.35) : wide ? 2.85 : 2.7, target: new THREE.Vector3(0, a ? THREE.MathUtils.lerp(0.53, a.mark.y, 0.6) : 0.53, 0) };
     controls.autoRotate = false; idleAt = performance.now();
   }
-  controls.addEventListener('start', () => { fly = null; controls.autoRotate = false; idleAt = performance.now(); });
+  controls.addEventListener('start', () => { fly = null; fv.t = fv.p = fv.r = 0; controls.autoRotate = false; idleAt = performance.now(); });
   controls.addEventListener('end', () => { idleAt = performance.now(); });
 
   // ── zones ──
@@ -153,18 +226,11 @@ export default function view(ctx) {
     picked = z; setHover(null); if (z) { U.uGlow.value = 0; applyZone(); }
     for (const [k, r] of rows) { r.classList.toggle('on', z?.key === k); r.setAttribute('aria-pressed', String(z?.key === k)); }
     for (const [k, d] of dots) d.classList.toggle('on', z?.key === k);
-    root.classList.toggle('picked', !!z); shiftT = z && matchMedia('(max-width: 760px)').matches ? 0.2 : 0;
+    root.classList.toggle('picked', !!z); wbox.replaceChildren(...widgets(h, z)); shiftT = z && matchMedia('(max-width: 760px)').matches ? 0.2 : 0;
     if (!z) { card.replaceChildren(); organ?.show(null); idleAt = performance.now(); return; }
     lookAt(z.side > 0 ? 0.3 : Math.PI - 0.3, false, z);
     const organCanvas = h('canvas', { class: 'md-organ-gl', 'aria-hidden': 'true' }), poster = h('img', { class: 'md-organ-poster', src: `${BASE}/organs/${z.organ}-poster.webp`, alt: '' });
-    const sect = (title, items, cls) => h('section', { class: 'md-sect ' + (cls || '') }, h('div', { class: 'cap' }, title), h('ul', null, items.map((t) => h('li', null, t))));
-    card.replaceChildren(
-      h('button', { class: 'icon-btn md-close', 'aria-label': 'Закрыть карточку', onclick: () => select(null) }, svg('x')),
-      h('div', { class: 'md-card-top' }, h('div', { class: 'md-organ' }, poster, organCanvas), h('div', null, h('div', { class: 'cap' }, 'Зона'), h('h2', null, z.title), h('p', null, z.summary))),
-      sect('Что здесь находится', z.contains), sect('Частые поводы провериться', z.complaints), sect('Красные флаги — срочно к врачу', z.redFlags, 'md-flags'),
-      h('button', { class: 'btn md-ask', onclick: () => ctx.askVit(`Расскажи про зону «${z.title}»: что здесь находится, на какие симптомы обращать внимание и когда нужно срочно к врачу.`) }, svg('spark'), 'Спросить VIT'),
-      h('p', { class: 'md-note' }, 'Это навигация, а не диагноз. При красных флагах звоните 103 или 112.'),
-      h('p', { class: 'md-credit' }, `Орган: ${z.organName}. Модель — `, h('a', { href: 'https://www.z-anatomy.com/', target: '_blank', rel: 'noopener noreferrer' }, 'Z-Anatomy'), ', CC BY-SA 4.0. Фигура — Blender Studio, CC0.'));
+    card.replaceChildren(...zoneCard(h, ctx, svg, z, h('span', { style: 'display:contents' }, poster, organCanvas), () => select(null)));
     card.scrollTop = 0; (organ ||= organStage()).show(z.organ, organCanvas, poster);
   }
 
@@ -178,7 +244,7 @@ export default function view(ctx) {
       async show(next, cnv, poster) { key = next; if (cur) { sc.remove(cur); cur = null; } r?.dispose(); r = null; target = cnv; if (!next) return;
         try { cache[next] ||= normalise((await gltf.loadAsync(`${BASE}/organs/${next}.glb`)).scene, mat, false, 1.08); } catch { return; }
         if (dead || key !== next || !cnv.isConnected) return;
-        r = new THREE.WebGLRenderer({ canvas: cnv, antialias: true, alpha: true }); r.setPixelRatio(Math.min(2, window.devicePixelRatio || 1)); r.setSize(cnv.clientWidth || 112, cnv.clientHeight || 112, false); r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneMapping;
+        try { r = new THREE.WebGLRenderer({ canvas: cnv, antialias: true, alpha: true }); } catch { r = null; return; } r.setPixelRatio(Math.min(2, window.devicePixelRatio || 1)); r.setSize(cnv.clientWidth || 112, cnv.clientHeight || 112, false); r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneMapping;
         cur = cache[next]; sc.add(cur); poster?.classList.add('hide'); },
       frame(t) { if (r && cur && target?.isConnected) { cur.rotation.y = t * 0.6; r.render(sc, cam); } },
       dispose() { r?.dispose(); Object.values(cache).forEach(disposeTree); mat.dispose(); } };
@@ -206,9 +272,11 @@ export default function view(ctx) {
   function frame(now) {
     raf = requestAnimationFrame(frame); const dt = Math.min(0.05, (now - last) / 1000); last = now; if (!W || document.hidden) return;
     U.uTime.value = now / 1000; U.uGlow.value += ((picked ? 1 : 0) - U.uGlow.value) * Math.min(1, dt * 5); U.uHover.value += ((hover ? 1 : 0) - U.uHover.value) * Math.min(1, dt * 9);
-    if (fly) { const k = 1 - Math.exp(-dt * 4.2); sph.setFromVector3(tmp.copy(camera.position).sub(controls.target));
-      let d = fly.theta - sph.theta; d = Math.atan2(Math.sin(d), Math.cos(d)); sph.theta += d * k; sph.phi += (fly.phi - sph.phi) * k; sph.radius += (fly.radius - sph.radius) * k; controls.target.lerp(fly.target, k);
-      camera.position.setFromSpherical(sph).add(controls.target); if (Math.abs(d) < 0.004 && Math.abs(fly.radius - sph.radius) < 0.004 && controls.target.distanceTo(fly.target) < 0.003) fly = null; }
+    if (fly) { const k = 1 - Math.exp(-dt * 4.2), w = 2 * Math.PI / 0.62; sph.setFromVector3(tmp.copy(camera.position).sub(controls.target));
+      let d = fly.theta - sph.theta; d = Math.atan2(Math.sin(d), Math.cos(d));
+      const sp = (x, v, err) => { v += (w * w * err - 2 * w * v) * dt; return [x + v * dt, v]; };                       // critically damped: no overshoot, keeps its speed if the target changes mid-turn
+      [sph.theta, fv.t] = sp(sph.theta, fv.t, d); [sph.phi, fv.p] = sp(sph.phi, fv.p, fly.phi - sph.phi); [sph.radius, fv.r] = sp(sph.radius, fv.r, fly.radius - sph.radius); controls.target.lerp(fly.target, k);
+      camera.position.setFromSpherical(sph).add(controls.target); if (Math.abs(d) < 0.004 && Math.abs(fly.radius - sph.radius) < 0.004 && controls.target.distanceTo(fly.target) < 0.003 && Math.abs(fv.t) < 0.02) { fly = null; fv.t = fv.p = fv.r = 0; } }
     else if (!picked && !controls.autoRotate && now - idleAt > 5000) controls.autoRotate = true;
     controls.update(); rig.rotation.y = Math.atan2(camera.position.x - controls.target.x, camera.position.z - controls.target.z);
     shift += (shiftT - shift) * Math.min(1, dt * 5); if (shift > 0.002) camera.setViewOffset(W, H, 0, H * shift, W, H); else if (camera.view) camera.clearViewOffset();
@@ -220,7 +288,7 @@ export default function view(ctx) {
     organ?.frame(now / 1000);
   }
   const onKey = (e) => { if (e.key === 'Escape' && picked) select(null); }; document.addEventListener('keydown', onKey);
-  setSex('male'); raf = requestAnimationFrame(frame);
+  setSex('male'); wbox.replaceChildren(...widgets(h, null)); raf = requestAnimationFrame(frame);
 
   return { root, destroy() {
     dead = true; cancelAnimationFrame(raf); ro.disconnect(); themeWatch.disconnect(); document.removeEventListener('keydown', onKey); controls.dispose(); organ?.dispose();
