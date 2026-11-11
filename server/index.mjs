@@ -90,7 +90,7 @@ async function api(req, res, url, user, token) {
     const b = await body(req), s = getSetting('models', {});
     if (b.policy && ['eco', 'balanced', 'cloud'].includes(b.policy)) setSetting('policy', b.policy);
     if (b.id && ['local', 'anthropic', 'comet', 'openai'].includes(b.id)) { const cur = { ...(s[b.id] || {}) };
-      for (const k of ['key', 'model', 'base', 'url']) if (typeof b[k] === 'string') { if (b[k].trim()) cur[k] = b[k].trim().slice(0, 400); else delete cur[k]; }
+      for (const k of ['key', 'model', 'base', 'url', 'top', 'topEffort']) if (typeof b[k] === 'string') { if (b[k].trim()) cur[k] = b[k].trim().slice(0, 400); else delete cur[k]; }
       if (typeof b.on === 'boolean') cur.on = b.on; s[b.id] = cur; setSetting('models', s); }
     return json(res, 200, { ok: true, items: await modelStatus(), policy: getSetting('policy', 'eco') });
   }

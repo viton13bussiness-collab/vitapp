@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS requests (id INTEGER PRIMARY KEY, user TEXT, title TE
 CREATE TABLE IF NOT EXISTS usage (id INTEGER PRIMARY KEY, provider TEXT, model TEXT, ms INTEGER, ok INTEGER, created INTEGER);
 CREATE INDEX IF NOT EXISTS msgs_conv ON msgs (conv, id);
 CREATE INDEX IF NOT EXISTS nodes_user ON nodes (user);`);
+// token counts per call, for the cost of cloud models (columns added after 0.3)
+for (const col of ['tin', 'tout']) { try { db.exec(`ALTER TABLE usage ADD COLUMN ${col} INTEGER DEFAULT 0`); } catch { /* already there */ } }
 
 const stmts = new Map();
 const prep = (sql) => stmts.get(sql) || (stmts.set(sql, db.prepare(sql)), stmts.get(sql));

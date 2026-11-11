@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { WORK } from './config.mjs';
 import { all, one, run, now, getSetting, setSetting } from './db.mjs';
-import { chat, askJSON } from './ladder.mjs';
+import { chat, askJSON, hasTopModel } from './ladder.mjs';
 import { recall, remember } from './memory.mjs';
 import { AGENTS, agentById } from './agents.mjs';
 import { webSearch, readPage } from './tools.mjs';
@@ -45,6 +45,19 @@ const PLANNER = `Ты — VIT и руководишь командой аген�
 Ответ строго JSON: {"title":"название до 6 слов","steps":[{"agent":"strategy","task":"что сделать, одно предложение"}]}`;
 const SITE = `Ты готовишь содержание одностраничного сайта по цели человека и наработкам команды. Пиши по-русски, живо и конкретно. Ответ строго JSON:
 {"brand":"название","tagline":"главный заголовок до 8 слов","intro":"подзаголовок, 1–2 предложения","features":[{"title":"","text":""},{"title":"","text":""},{"title":"","text":""}],"about":"о проекте, 2–3 предложения","steps":["шаг 1","шаг 2","шаг 3"],"cta":"текст кнопки, 2–3 слова","contact":"одна фраза приглашения связаться"}`;
+const SITE_HTML = `Ты — сильный веб-дизайнер и фронтенд-разработчик. По цели человека и наработкам команды напиши готовый одностраничный сайт — один HTML-файл.
+Требования:
+- Современный дорогой дизайн уровня Apple / Linear / Stripe: крупная типографика, много воздуха, чёткая сетка, продуманные цвета, аккуратные карточки, мягкие тени, плавные hover-эффекты и CSS-анимации появления.
+- Весь CSS внутри <style>. Никакого JavaScript, никаких <script>, внешних шрифтов, стилей и картинок по ссылкам — сайт открывается без интернета. Шрифт: -apple-system, "SF Pro Display", Inter, system-ui, sans-serif. Иллюстрации — только встроенный SVG и CSS-градиенты.
+- Разделы: шапка с навигацией, первый экран с сильным заголовком и кнопкой, преимущества, услуги или продукты, как это работает, отзывы-заглушки с пометкой «пример», цены или пакеты, вопросы и ответы, финальный призыв, подвал. Адаптивно под телефон.
+- Тексты по-русски, живые и конкретные под этот бизнес. Не выдумывай реальные телефоны, адреса и цифры клиентов — ставь понятные заглушки.
+Ответ — только HTML-документ, начиная с <!doctype html>, без пояснений и без markdown.`;
+/** The full page from the model, cleaned: from <!doctype> to </html>, with any script or external load cut out. */
+function cleanPage(text) {
+  const a = text.search(/<!doctype html|<html/i), b = text.toLowerCase().lastIndexOf('</html>'); if (a < 0 || b < a) return null;
+  const html = text.slice(a, b + 7).replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<(link|iframe|object|embed)\b[^>]*>/gi, '').replace(/\son\w+\s*=\s*("[^"]*"|'[^']*')/gi, '');
+  return html.length > 3000 ? html : null;
+}
 const wantsSite = (t) => /сайт|лендинг|landing|страниц|website/i.test(t);
 
 export const jobShape = (j) => j && { ...j, steps: JSON.parse(j.steps || '[]') };
@@ -67,7 +80,13 @@ async function runGoal({ user, convId, text, title, emit, signal, onSwitch, meta
     const s = steps[i], a = agentById(s.agent); s.status = 'run'; saveJob(id, steps, 'run'); emit({ type: 'step', job: id, i, status: 'run' });
     const prev = done.map((d) => `${d.name}: ${d.text.slice(0, 700)}`).join('\n\n') || 'пока ничего';
     try {
-      if (s.agent === 'dev') {
+      const built = s.agent === 'dev' && (await hasTopModel()) ? await chat({ system: SITE_HTML, messages: [{ role: 'user', content: `Цель человека: ${text}\n\nНаработки команды:\n${prev}` }], tier: 'top', maxTokens: 14000, signal, onSwitch }).catch((e) => { if (signal?.aborted) throw e; return null; }) : null;
+      const page = built?.provider === 'anthropic-top' ? cleanPage(built.text) : null;
+      if (page) {                                                                                       // Claude Opus wrote the whole site itself
+        fs.writeFileSync(path.join(dir, 'site.html'), page); s.file = 'site.html'; Object.assign(meta, { model: built.model, provider: built.name, local: false });
+        const title = (page.match(/<title>([^<]{1,120})<\/title>/i) || [])[1] || jobTitle;
+        done.push({ name: a.name, text: `Claude Opus собрал сайт «${title.trim()}» целиком: одна страница со всеми разделами, адаптивная, без внешних зависимостей.` });
+      } else if (s.agent === 'dev') {
         const content = await askJSON({ system: SITE, messages: [{ role: 'user', content: `Цель человека: ${text}\n\nНаработки команды:\n${prev}` }], tier: 'smart', maxTokens: 900, temperature: 0.5, signal, onSwitch });
         if (!content) throw new Error('no content');
         fs.writeFileSync(path.join(dir, 'site.html'), renderSite(content)); s.file = 'site.html';

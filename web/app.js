@@ -364,11 +364,14 @@ function viewSettings(arg) {
         const model = m.local ? h('select', { class: 'field sm', 'aria-label': 'Модель' }, (m.models.length ? m.models : ['']).map((n) => h('option', { value: n, selected: n === m.model }, n || 'нет моделей'))) : h('input', { class: 'field sm', value: m.model, placeholder: 'Модель', 'aria-label': 'Модель' });
         const key = !m.local && h('input', { class: 'field sm', type: 'password', placeholder: m.key ? `Ключ ${m.key}` : 'Ключ API', autocomplete: 'off', 'aria-label': 'Ключ API' });
         const base = m.base !== undefined && h('input', { class: 'field sm', value: m.base, placeholder: 'Адрес API', 'aria-label': 'Адрес API', style: 'grid-column:1/-1' });
-        const save = async () => { const b = { id: m.id, model: model.value }; if (key && key.value) b.key = key.value; if (base) b.base = base.value; ladder(box, await api('/api/models', { body: b })); toast('Сохранено'); };
+        const top = m.top !== undefined && h('input', { class: 'field sm', value: m.top || '', placeholder: 'Сильная модель', 'aria-label': 'Сильная модель для сайтов и сложной работы', title: 'Сильная модель: собирает сайты и делает сложную работу' });
+        const usd = (m.spend || []).reduce((t, r) => t + (r.usd || 0), 0), calls = (m.spend || []).reduce((t, r) => t + r.calls, 0);
+        const spent = m.spend && calls ? ` · за 30 дней ${calls} запросов ≈ $${usd < 0.01 ? usd.toFixed(4) : usd.toFixed(2)}` : '';
+        const save = async () => { const b = { id: m.id, model: model.value }; if (key && key.value) b.key = key.value; if (base) b.base = base.value; if (top) b.top = top.value; ladder(box, await api('/api/models', { body: b })); toast('Сохранено'); };
         const check = h('button', { class: 'btn sm ghost', onclick: async () => { check.disabled = true; check.textContent = 'Проверяю…'; const r = await api('/api/models/test', { body: { id: m.id } }); toast(r.result.ok ? `${m.name}: отвечает за ${(r.result.ms / 1000).toFixed(1)} с` : `${m.name}: ${r.result.reason}`); ladder(box, { ...d, items: r.items }); } }, 'Проверить');
-        return h('div', { class: 'model' }, h('div', null, h('div', { class: 'name' }, h('span', { class: 'dot ' + m.state }), m.name, h('small', null, m.where)), h('div', { class: 'why' }, stateText)),
+        return h('div', { class: 'model' }, h('div', null, h('div', { class: 'name' }, h('span', { class: 'dot ' + m.state }), m.name, h('small', null, m.where)), h('div', { class: 'why' }, stateText + spent)),
           h('div', { class: 'acts' }, m.ready && check, toggle(m.on, async (on) => { await api('/api/models', { body: { id: m.id, on } }); })),
-          h('div', { class: 'inputs' }, model, key || h('button', { class: 'btn sm ghost', onclick: save }, 'Сохранить'), base, key && h('button', { class: 'btn sm ghost', style: 'grid-column:1/-1;justify-self:start', onclick: save }, 'Сохранить')));
+          h('div', { class: 'inputs' }, model, key || h('button', { class: 'btn sm ghost', onclick: save }, 'Сохранить'), base, top, top && h('span', { class: 'hint', style: 'align-self:center;margin:0' }, 'Сильная — сайты и сложная работа, в самом лёгком режиме'), key && h('button', { class: 'btn sm ghost', style: 'grid-column:1/-1;justify-self:start', onclick: save }, 'Сохранить')));
       })));
   }
   // open models: free weights that run on this computer; what the machine can run comes first

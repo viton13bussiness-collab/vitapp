@@ -1,6 +1,6 @@
 // The model ladder. Models are engines; VIT decides which one works on a task and moves to the next
 // when one hits a limit, runs out of balance or stops answering. A local model (Ollama) keeps VIT alive with no keys at all.
-import { getSetting, run, now } from './db.mjs';
+import { getSetting, run, all, now } from './db.mjs';
 
 // The strongest local model that fits this machine comes first: a 16 GB Mac runs an 8B model comfortably, and with one chat model loaded at a time it stays fast.
 const PREF = ['qwen3:14b', 'gemma3:12b', 'qwen3:8b', 'gemma3:4b', 'qwen3:4b-instruct', 'qwen3', 'gemma3', 'llama3.3', 'llama3.2', 'llama3', 'mistral', 'phi4', 'phi'];
@@ -30,6 +30,7 @@ export async function providers() {
   P.push({ id: 'local', kind: 'ollama', name: 'Локальная модель', where: 'на этом компьютере', url, model, models: chatNames, ready: !!model, on: s.local?.on !== false });
   const cloud = (id, kind, name, base, key, model) => P.push({ id, kind, name, where: 'облако', base, key, model, ready: !!key, on: s[id]?.on !== false });
   cloud('anthropic', 'anthropic', 'Claude', 'https://api.anthropic.com/v1', s.anthropic?.key || process.env.ANTHROPIC_API_KEY || '', s.anthropic?.model || process.env.VIT_CLAUDE_MODEL || 'claude-haiku-5-5');
+  Object.assign(P.at(-1), { top: s.anthropic?.top || process.env.VIT_CLAUDE_TOP || 'claude-opus-5-5', topEffort: s.anthropic?.topEffort || 'low' });
   cloud('comet', 'openai', 'CometAPI', 'https://api.cometapi.com/v1', s.comet?.key || process.env.COMETAPI_KEY || '', s.comet?.model || process.env.VIT_COMET_MODEL || 'gpt-4o-mini');
   cloud('openai', 'openai', 'OpenAI-совместимая', (s.openai?.base || process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, ''), s.openai?.key || process.env.OPENAI_API_KEY || '', s.openai?.model || process.env.VIT_OPENAI_MODEL || 'gpt-4o-mini');
   return P;
@@ -50,6 +51,7 @@ function explain(e) {
   if (e.status === 402 || e.status === 403 || /quota|balance|insufficient|credit/.test(b)) return { text: 'закончился баланс', ms: 600000 };
   if (e.status === 429) return { text: 'достигнут лимит запросов', ms: 60000 };
   if (e.status === 404) return { text: 'модель не найдена', ms: 300000 };
+  if (e.status === 451) return { text: 'отказалась отвечать на этот запрос', ms: 0 };
   if (e.status >= 500) return { text: 'сервис временно недоступен', ms: 15000 };
   if (e.name === 'TimeoutError') return { text: 'не ответила вовремя', ms: 30000 };
   return { text: 'недоступна', ms: 20000 };
@@ -82,29 +84,38 @@ const CALL = {
       if (d.error) throw new HttpError(500, JSON.stringify(d.error)); const t = d.choices?.[0]?.delta?.content || ''; if (t) { out += t; o.onToken(t); } }
     if (!out.trim()) throw new HttpError(502, 'empty reply'); return out;
   },
+  // Current Claude models always think before they answer, and the thinking counts against max_tokens: a 120-token cap left the router with
+  // nothing to say. Every call gets room for it, runs at low effort (the cheapest setting), and Opus falls back on its own if a classifier declines.
   async anthropic(p, o) {
-    const res = await post(p.base + '/messages', { 'x-api-key': p.key, 'anthropic-version': '2023-06-01' }, { model: p.model, max_tokens: o.maxTokens, stream: true,
-      system: (o.system || '') + (o.json ? '\nОтвет — только один JSON-объект, без пояснений.' : ''), messages: o.messages }, sig(o.signal, 120000));
+    const opus = /opus|fable/.test(p.model), headers = { 'x-api-key': p.key, 'anthropic-version': '2023-06-01', ...(opus ? { 'anthropic-beta': 'server-side-fallback-2026-07-01' } : {}) };
+    const res = await post(p.base + '/messages', headers, { model: p.model, max_tokens: o.maxTokens + (opus ? 6000 : 2500), stream: true, output_config: { effort: p.effort || 'low' }, ...(opus ? { fallbacks: 'default' } : {}),
+      system: (o.system || '') + (o.json ? '\nОтвет — только один JSON-объект, без пояснений.' : ''), messages: o.messages }, sig(o.signal, opus ? 300000 : 120000));
     if (!res.ok) throw new HttpError(res.status, await res.text());
-    let out = '';
+    let out = '', stop = '';
     for await (const l of lines(res)) { if (!l.startsWith('data:')) continue; let d; try { d = JSON.parse(l.slice(5)); } catch { continue; }
-      if (d.type === 'error') throw new HttpError(500, JSON.stringify(d.error)); const t = d.type === 'content_block_delta' ? d.delta?.text || '' : ''; if (t) { out += t; o.onToken(t); } }
+      if (d.type === 'error') throw new HttpError(d.error?.type === 'overloaded_error' ? 529 : 500, JSON.stringify(d.error));
+      if (d.type === 'message_start') o.usage.input = d.message?.usage?.input_tokens || 0;
+      if (d.type === 'message_delta') { o.usage.output = d.usage?.output_tokens || o.usage.output || 0; stop = d.delta?.stop_reason || stop; }
+      const t = d.type === 'content_block_delta' && d.delta?.type === 'text_delta' ? d.delta.text : ''; if (t) { out += t; o.onToken(t); } }
+    if (stop === 'refusal') throw new HttpError(451, 'refusal');
     if (!out.trim()) throw new HttpError(502, 'empty reply'); return out;
   },
 };
 
 /** One reply from the first model on the ladder that answers. onSwitch fires each time VIT moves down a step. */
 export async function chat({ messages, system = '', tier = 'fast', json = false, maxTokens = 600, temperature = 0.5, onToken, onSwitch, signal }) {
-  const list = await ladder(tier);
+  const list = await ladder(tier === 'top' ? 'smart' : tier);
+  if (tier === 'top') { const c = list.find((p) => p.kind === 'anthropic'); if (c?.top) list.unshift({ ...c, id: 'anthropic-top', name: 'Claude Opus', model: c.top, effort: c.topEffort }); }
   if (!list.length) { const e = new Error('Нет ни одной доступной модели. Запустите Ollama или добавьте ключ в Настройках.'); e.code = 'NO_MODEL'; throw e; }
   let lastErr;
   for (let i = 0; i < list.length; i++) {
     const p = list[i], t0 = now(); let got = false;
     try {
-      const call = () => CALL[p.kind](p, { messages, system, json, maxTokens, temperature, signal, onToken: (t) => { got = true; onToken?.(t); } });
+      const usage = { input: 0, output: 0 };
+      const call = () => CALL[p.kind](p, { messages, system, json, maxTokens, temperature, signal, usage, onToken: (t) => { got = true; onToken?.(t); } });
       // a cloud model that is briefly overloaded (5xx, 429) gets one more try before VIT steps down the ladder
       const text = await call().catch(async (e) => { if (p.kind === 'ollama' || got || signal?.aborted || !(e.status >= 500 || e.status === 429)) throw e; await new Promise((r) => setTimeout(r, 1500)); return call(); });
-      cool.delete(p.id); lastOk.set(p.id, now()); run('INSERT INTO usage (provider, model, ms, ok, created) VALUES (?, ?, ?, 1, ?)', p.id, p.model, now() - t0, now());
+      cool.delete(p.id); lastOk.set(p.id, now()); run('INSERT INTO usage (provider, model, ms, ok, created, tin, tout) VALUES (?, ?, ?, 1, ?, ?, ?)', p.id, p.model, now() - t0, now(), usage.input, usage.output);
       return { text, provider: p.id, name: p.name, model: p.model, local: p.kind === 'ollama', ms: now() - t0 };
     } catch (e) {
       if (signal?.aborted) throw e;
@@ -132,9 +143,17 @@ export async function embed(text) {
   catch { return null; }
 }
 
+// $ per million tokens (input, output) — Anthropic list prices, 2026-11
+const PRICE = { 'claude-haiku-5-5': [0.1, 0.5], 'claude-sonnet-5-5': [2, 10], 'claude-opus-5-5': [4, 20], 'claude-fable-5-2': [8, 40] };
+export function spend(days = 30) {
+  const rows = all('SELECT model, SUM(tin) i, SUM(tout) o, COUNT(*) n FROM usage WHERE ok = 1 AND provider LIKE ? AND created > ? GROUP BY model', 'anthropic%', now() - days * 864e5);
+  return rows.map((r) => ({ model: r.model, calls: r.n, usd: PRICE[r.model] ? (r.i * PRICE[r.model][0] + r.o * PRICE[r.model][1]) / 1e6 : null }));
+}
+/** Is a strong cloud model (Claude Opus) available right now? The site builder writes a full page only when it is. */
+export async function hasTopModel() { const c = (await providers()).find((p) => p.kind === 'anthropic'); return !!(c?.ready && c.on && c.top && !(cool.get('anthropic-top')?.until > now())); }
 export async function status() {
   return (await providers()).map((p) => { const c = cool.get(p.id);
-    return { id: p.id, name: p.name, where: p.where, model: p.model, models: p.models, base: p.kind === 'openai' && p.id === 'openai' ? p.base : undefined, url: p.url, ready: p.ready, on: p.on, local: p.kind === 'ollama',
+    return { id: p.id, name: p.name, where: p.where, model: p.model, models: p.models, top: p.top, topEffort: p.topEffort, spend: p.kind === 'anthropic' ? spend() : undefined, base: p.kind === 'openai' && p.id === 'openai' ? p.base : undefined, url: p.url, ready: p.ready, on: p.on, local: p.kind === 'ollama',
       key: p.key ? '••••' + p.key.slice(-4) : '', state: !p.ready ? 'none' : c?.until > now() ? 'limit' : 'ok', reason: c?.until > now() ? c.reason : '', lastOk: lastOk.get(p.id) || 0 }; });
 }
 
