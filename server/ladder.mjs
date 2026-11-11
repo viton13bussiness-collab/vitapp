@@ -50,7 +50,7 @@ function explain(e) {
   if (e.status === 402 || e.status === 403 || /quota|balance|insufficient|credit/.test(b)) return { text: 'закончился баланс', ms: 600000 };
   if (e.status === 429) return { text: 'достигнут лимит запросов', ms: 60000 };
   if (e.status === 404) return { text: 'модель не найдена', ms: 300000 };
-  if (e.status >= 500) return { text: 'сервис временно недоступен', ms: 60000 };
+  if (e.status >= 500) return { text: 'сервис временно недоступен', ms: 15000 };
   if (e.name === 'TimeoutError') return { text: 'не ответила вовремя', ms: 30000 };
   return { text: 'недоступна', ms: 20000 };
 }
@@ -101,7 +101,9 @@ export async function chat({ messages, system = '', tier = 'fast', json = false,
   for (let i = 0; i < list.length; i++) {
     const p = list[i], t0 = now(); let got = false;
     try {
-      const text = await CALL[p.kind](p, { messages, system, json, maxTokens, temperature, signal, onToken: (t) => { got = true; onToken?.(t); } });
+      const call = () => CALL[p.kind](p, { messages, system, json, maxTokens, temperature, signal, onToken: (t) => { got = true; onToken?.(t); } });
+      // a cloud model that is briefly overloaded (5xx, 429) gets one more try before VIT steps down the ladder
+      const text = await call().catch(async (e) => { if (p.kind === 'ollama' || got || signal?.aborted || !(e.status >= 500 || e.status === 429)) throw e; await new Promise((r) => setTimeout(r, 1500)); return call(); });
       cool.delete(p.id); lastOk.set(p.id, now()); run('INSERT INTO usage (provider, model, ms, ok, created) VALUES (?, ?, ?, 1, ?)', p.id, p.model, now() - t0, now());
       return { text, provider: p.id, name: p.name, model: p.model, local: p.kind === 'ollama', ms: now() - t0 };
     } catch (e) {
