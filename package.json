@@ -16,7 +16,7 @@
     "app": "electron ."
   },
   "devDependencies": {
-    "electron": "^39.0.0"
+    "electron": "42.5.0"
   },
   "license": "UNLICENSED",
   "private": true
