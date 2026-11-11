@@ -73,6 +73,10 @@ function shell() {
   vitView = buildVit(); main.append(vitView.root);
   window.addEventListener('hashchange', () => go(location.hash.slice(1) || 'home', true));
   window.addEventListener('vit:theme', () => { if (S.view === 'home') go('home'); });
+  // the room shifts a little against the pointer, so the glass feels like it floats in front of it
+  let px = 0, py = 0, tx = 0, ty = 0, moving = 0; const room = document.getElementById('room');
+  const drift = () => { px += (tx - px) * 0.06; py += (ty - py) * 0.06; room.style.setProperty('--px', px.toFixed(2) + 'px'); room.style.setProperty('--py', py.toFixed(2) + 'px'); moving = Math.abs(tx - px) + Math.abs(ty - py) > 0.05 ? requestAnimationFrame(drift) : 0; };
+  window.addEventListener('pointermove', (e) => { if (e.pointerType === 'touch' || matchMedia('(prefers-reduced-motion: reduce)').matches) return; tx = (0.5 - e.clientX / innerWidth) * 18; ty = (0.5 - e.clientY / innerHeight) * 12; moving ||= requestAnimationFrame(drift); }, { passive: true });
   go(KNOWN.has(location.hash.slice(1)) ? location.hash.slice(1) : 'home', true);
   live(); setTimeout(askFirst, 1800);
 }
@@ -87,6 +91,7 @@ function go(view, fromHash, arg) {
   for (const [id, el] of Object.entries(tabEls)) { const on = id === view || (id === 'vit' && inVit); el.classList.toggle('on', on); el.setAttribute('aria-current', on ? 'page' : 'false'); }
   for (const [id, el] of Object.entries(subEls)) el.classList.toggle('on', id === view);
   sub.classList.toggle('hide', !inVit); badges();
+  document.body.classList.toggle('bare', view === 'home' && getTheme() === 'spatial');            // the spatial home carries its own navigation, like a window in the room
   current?.destroy?.(); current?.root.remove(); current = null;
   vitView.root.classList.toggle('hide', view !== 'vit'); if (view === 'vit') { vitView.resume(); return vitView.focus(); } vitView.pause();
   if (WORLDS.has(view)) return openWorld(view, arg);

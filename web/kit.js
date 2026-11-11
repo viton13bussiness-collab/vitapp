@@ -22,7 +22,7 @@ export const ICON = {
   hub: '<rect x="4.500" y="4.500" width="6" height="6" rx="1.800"/><rect x="13.500" y="4.500" width="6" height="6" rx="1.800"/><rect x="4.500" y="13.500" width="6" height="6" rx="1.800"/><rect x="13.500" y="13.500" width="6" height="6" rx="1.800"/>',
   frames: '<rect x="3.500" y="5" width="11.500" height="14" rx="2.500"/><path d="M18 7.500h1a1.500 1.500 0 011.500 1.500v6a1.500 1.500 0 01-1.500 1.500h-1"/>',
   help: '<circle cx="12" cy="12" r="8.500"/><path d="M9.700 9.700a2.400 2.400 0 114 1.800c-.900.700-1.700 1.200-1.700 2.300M12 16.700v.2"/>',
-  right: '<path d="M5 12h14M13 6l6 6-6 6"/>', search: '<circle cx="11" cy="11" r="6.500"/><path d="M16 16l4 4"/>',
+  right: '<path d="M5 12h14M13 6l6 6-6 6"/>', chev: '<path d="M9.500 6l6 6-6 6"/>', search: '<circle cx="11" cy="11" r="6.500"/><path d="M16 16l4 4"/>',
   plus: '<path d="M12 5v14M5 12h14"/>', clock: '<circle cx="12" cy="12" r="8.500"/><path d="M12 7.500V12l3 2"/>',
   mic: '<rect x="9" y="3.500" width="6" height="11" rx="3"/><path d="M5.500 11.500a6.500 6.500 0 0013 0M12 18v2.500"/>',
   up: '<path d="M12 19V5.500M6 11.500l6-6 6 6"/>', stop: '<rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor" stroke="none"/>',
