@@ -5,6 +5,7 @@
 // connection offers (/api/rtc/* on the site — see site-patch/rtc). This file is the narrow bridge to those routes,
 // reusing the site session the messenger already holds (server/worlds/messages.mjs).
 import { siteCall, siteStatus, siteMode } from './messages.mjs';
+import { can } from '../plan.mjs';
 
 const CODE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/, MEMBER = /^[A-Za-z0-9_-]{1,128}$/, CURSOR = /^[0-9TZ:.#a-z-]{10,40}$/;
 const TYPES = new Set(['offer', 'answer', 'candidate', 'bye']);
@@ -24,7 +25,7 @@ function iceServers() {
 
 export async function handle({ url, user, seg, method, json, fail, body }) {
   if (seg[1] !== 'meet') return false;
-  if ((user.plan || 'guest') === 'guest') { json(402, { ok: false, code: 'subscribe', message: 'Встречи доступны с VITON ID' }); return true; }
+  if (!can(user, 'meet')) { json(402, { ok: false, code: 'subscribe', message: 'Встречи недоступны на вашем уровне — посмотрите «Что входит»' }); return true; }
   const what = seg[2] || '';
 
   if (what === 'status' && method === 'GET') { const st = await siteStatus(user); json(200, { ok: true, ...st, ice: iceServers(), relay: iceServers().some((s) => String(s.urls).startsWith('turn')) }); return true; }

@@ -8,6 +8,7 @@
 import dns from 'node:dns/promises';
 import net from 'node:net';
 import { siteCall, siteStatus, siteMode, SITE } from './messages.mjs';
+import { can } from '../plan.mjs';
 
 const CODE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/, KEY = /^[A-Z0-9]{4}$/, MEMBER = /^[A-Za-z0-9_-]{1,128}$/, CURSOR = /^[0-9TZ:.#a-z-]{10,40}$/, SEAT = /^R\d{1,2}S\d{1,2}$/;
 const TYPES = new Set(['offer', 'answer', 'candidate', 'bye']);
@@ -64,7 +65,7 @@ async function film(req, res, url) {
 
 export async function handle({ req, res, url, user, seg, method, json, fail, body }) {
   if (seg[1] !== 'cinema') return false;
-  if ((user.plan || 'guest') === 'guest') { json(402, { ok: false, code: 'subscribe', message: 'Кинотеатр доступен с VITON ID' }); return true; }
+  if (!can(user, 'cinema')) { json(402, { ok: false, code: 'subscribe', message: 'Кинотеатр недоступен на вашем уровне — посмотрите «Что входит»' }); return true; }
   const what = seg[2] || '';
   if (what === 'film' && method === 'GET') { await film(req, res, url); return true; }
   if (what === 'status' && method === 'GET') { const st = await siteStatus(user); json(200, { ok: true, ...st, ice: iceServers(), relay: iceServers().some((s) => String(s.urls).startsWith('turn')) }); return true; }
@@ -84,7 +85,7 @@ export async function handle({ req, res, url, user, seg, method, json, fail, bod
 
   // hosting a screening (creating it, issuing tickets, changing it) is part of the VIT subscription; any VITON ID may come by ticket
   const hosting = method !== 'GET' && what === 'screenings' && (!seg[3] || (!seg[4] && method === 'PATCH') || seg[4] === 'tickets' || seg[4] === 'kick');
-  if (hosting && user.plan !== 'vit') { json(402, { ok: false, code: 'subscribe', message: 'Проводить сеансы можно с подпиской VIT. Прийти по билету — с любым VITON ID.' }); return true; }
+  if (hosting && !can(user, 'cinema.host')) { json(402, { ok: false, code: 'subscribe', message: 'Проводить сеансы можно с подпиской VIT. Прийти по билету — с любым VITON ID.' }); return true; }
   if (what === 'mine' && method === 'GET') { await pass('GET', '/api/rtc/cinema/mine'); return true; }
   if (what === 'redeem' && method === 'POST') { const b = await body(); await pass('POST', '/api/rtc/cinema/redeem', { ticket: String(b.ticket || '').slice(0, 20) }); return true; }
   if (what === 'screenings' && !seg[3] && method === 'POST') {

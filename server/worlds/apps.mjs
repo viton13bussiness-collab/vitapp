@@ -7,6 +7,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { DATA } from '../config.mjs';
+import { can } from '../plan.mjs';
 
 const API = 'https://api.github.com', UA = 'VITON13-Apps/0.3 (+https://viton13.com)';
 const DIR = path.join(os.homedir(), 'Downloads', 'VITON13 Apps');
@@ -190,7 +191,7 @@ async function openFile(user, file, reveal) {
 export const _jobs = jobs;
 export async function handle({ url, seg, method, json, fail, user, body }) {
   if (seg[1] !== 'apps') return false;
-  const guest = user.plan === 'guest', need = () => fail(402, 'Скачивание и запуск приложений — с VITON ID');
+  const guest = !can(user, 'apps'), need = () => fail(402, 'Скачивание приложений недоступно на вашем уровне');
   try {
     if (!seg[2] && method === 'GET') { const { items, note } = await catalog(); json(200, { ok: true, cats: CATS, items, note, arch: ARM ? 'Apple Silicon' : 'Intel', dir: DIR.replace(os.homedir(), '~'), dry: DRY }); return true; }
     if (seg[2] === 'search' && method === 'GET') { json(200, { ok: true, ...(await search(url.searchParams.get('q'))) }); return true; }

@@ -1,5 +1,6 @@
-// Music world: a player window floating in the room, like a visionOS app. Radio from the open Radio Browser catalogue,
-// free netlabel music from the Internet Archive (licence on every track), podcasts, and your own files from ~/Music.
+// VIT Music: a player window floating in the room, like a visionOS app. Radio from the open Radio Browser catalogue,
+// free netlabel music from the Internet Archive (licence on every track), podcasts, your files from ~/Music, and «Мои треки» —
+// music you upload yourself: kept on this Mac for free, and with the VIT subscription also in the VITON13 cloud.
 // One <audio> lives in window.__vitMusic: it keeps playing while you walk to another world, and the window reattaches to it.
 
 // ── icons (filled, like a player) ───────────────────────────────────────────
@@ -26,6 +27,11 @@ const SVG = {
   back: '<path d="M14.5 5.5 8 12l6.5 6.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
   ext: '<path d="M13.5 5.5h5v5M18.5 5.5l-8 8M10 6.5H7a1.5 1.5 0 0 0-1.5 1.5v9A1.5 1.5 0 0 0 7 18.5h9a1.5 1.5 0 0 0 1.5-1.5v-3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>',
   vit: '<circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="12" r="2.3" fill="currentColor"/>',
+  up: '<path d="M12 15.5V5M7.5 9.5 12 5l4.5 4.5M5 15.5v2a1.5 1.5 0 0 0 1.5 1.5h11a1.5 1.5 0 0 0 1.5-1.5v-2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>',
+  down: '<path d="M12 5v10.5M7.5 11 12 15.5l4.5-4.5M5 15.5v2a1.5 1.5 0 0 0 1.5 1.5h11a1.5 1.5 0 0 0 1.5-1.5v-2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>',
+  cloud: '<path d="M7.5 18a4 4 0 0 1-.6-7.95A5.5 5.5 0 0 1 17.6 9.3 4.35 4.35 0 0 1 17 18z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>',
+  mac: '<rect x="4" y="5" width="16" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M9 19h6M12 16v3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>',
+  mine: '<circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 8v5.5M9.5 11 12 8.5l2.5 2.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="16.3" r="1" fill="currentColor"/>',
 };
 
 const store = { get: (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } }, set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* private mode */ } } };
@@ -90,7 +96,9 @@ const time = (s) => { if (!Number.isFinite(s) || s <= 0) return '—'; s = Math.
 const initials = (s) => String(s || '♪').replace(/[^\p{L}\p{N} ]/gu, ' ').trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '♪';
 const hue = (s) => { let x = 0; for (const c of String(s)) x = (x * 31 + c.charCodeAt(0)) >>> 0; return x % 360; };
 const ago = (ms) => (ms ? new Date(ms).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: new Date(ms).getFullYear() === new Date().getFullYear() ? undefined : 'numeric' }) : '');
-const KIND = { radio: 'Радио', archive: 'Свободная музыка', podcast: 'Подкаст', local: 'Моя музыка' };
+const KIND = { radio: 'Радио', archive: 'Свободная музыка', podcast: 'Подкаст', local: 'Папка «Музыка»', upload: 'Мои треки', cloud: 'Облако VIT Music' };
+const MB = (n) => (n >= 1024 ** 3 ? `${(n / 1024 ** 3).toFixed(1).replace('.', ',')} ГБ` : `${Math.max(0.1, n / 1024 ** 2).toFixed(n < 10 * 1024 ** 2 ? 1 : 0).replace('.', ',')} МБ`);
+const UP_MAX = 50 * 1024 * 1024, UP_EXT = /\.(mp3|m4a|aac|flac|wav|ogg|oga|opus)$/i;
 
 export default function view(ctx) {
   const { h, api, toast, css } = ctx;
@@ -109,7 +117,8 @@ export default function view(ctx) {
   const nav = h('nav', { class: 'mu-nav' }), libNav = h('div', { class: 'mu-nav' });
   const main = h('div', { class: 'mu-main scroll' }), crumbs = h('div', { class: 'mu-crumbs' }), page = h('div', { class: 'mu-page' });
   const now = h('aside', { class: 'mu-now' });
-  const side = h('aside', { class: 'mu-side' },
+  const brand = h('div', { class: 'mu-brand' }, h('span', { class: 'mu-brand-mark', 'aria-hidden': 'true' }, h('i'), h('i'), h('i')), h('b', null, 'VIT Music'));
+  const side = h('aside', { class: 'mu-side' }, brand,
     h('label', { class: 'mu-search' }, ic('search'), search),
     h('div', { class: 'mu-cap' }, 'Меню'), nav,
     h('div', { class: 'mu-cap' }, 'Медиатека'), libNav,
@@ -119,12 +128,14 @@ export default function view(ctx) {
   const win = h('div', { class: 'mu-win' }, side, main, now);
   const root = h('div', { class: 'view mu' }, h('div', { class: 'mu-stage' }, win, bar));
 
-  const MENU = [['home', 'Главная', 'home'], ['radio', 'Радио', 'radio'], ['free', 'Свободная музыка', 'free'], ['pods', 'Подкасты', 'pods'], ['local', 'Моя музыка', 'local']];
+  const MENU = [['home', 'Главная', 'home'], ['radio', 'Радио', 'radio'], ['free', 'Свободная музыка', 'free'], ['pods', 'Подкасты', 'pods'], ['local', 'Папка «Музыка»', 'local']];
   let route = store.get('vit.music.route', { name: 'home' }), history = [], data = { playlists: [] }, alive = true, token = 0;
 
   function paintNav() {
     nav.replaceChildren(...MENU.map(([id, label, i]) => h('button', { class: 'mu-link' + (route.name === id || route.from === id ? ' on' : ''), onclick: () => go({ name: id }, true) }, ic(i), h('span', null, label))));
     libNav.replaceChildren(
+      h('div', { class: 'mu-link-row' }, h('button', { class: 'mu-link' + (route.name === 'mine' ? ' on' : ''), onclick: () => go({ name: 'mine' }, true) }, ic('mine'), h('span', null, 'Мои треки'), h('small', null, data.upCount ? String(data.upCount) : '')),
+        h('button', { class: 'mu-up-mini', title: 'Загрузить музыку', 'aria-label': 'Загрузить музыку', onclick: pickFiles }, ic('up'))),
       h('button', { class: 'mu-link' + (route.name === 'likes' ? ' on' : ''), onclick: () => go({ name: 'likes' }, true) }, ic('heart'), h('span', null, 'Любимое'), h('small', null, engine.state.liked.size ? String(engine.state.liked.size) : '')),
       ...(data.playlists || []).map((p) => h('button', { class: 'mu-link' + (route.name === 'playlist' && route.id === p.id ? ' on' : ''), onclick: () => go({ name: 'playlist', id: p.id, title: p.title }, true) }, ic('list'), h('span', null, p.title), h('small', null, p.n ? String(p.n) : ''))),
       h('button', { class: 'mu-link mute', onclick: newPlaylist }, ic('plus'), h('span', null, 'Новый плейлист')));
@@ -135,7 +146,7 @@ export default function view(ctx) {
   }
 
   // ── pages ──
-  const TITLES = { home: 'Главная', radio: 'Радио', free: 'Свободная музыка', pods: 'Подкасты', local: 'Моя музыка', likes: 'Любимое', search: 'Поиск' };
+  const TITLES = { home: 'Главная', radio: 'Радио', free: 'Свободная музыка', pods: 'Подкасты', local: 'Папка «Музыка»', likes: 'Любимое', search: 'Поиск', mine: 'Мои треки' };
   function go(r, root = false) {
     if (root) history = []; else history.push(route);
     route = r; store.set('vit.music.route', r.name === 'album' || r.name === 'show' || r.name === 'playlist' || r.name === 'search' ? { name: 'home' } : r);
@@ -204,7 +215,7 @@ export default function view(ctx) {
       const lead = d.ru[0] || d.top[0];
       return [
         lead ? hero({ kicker: 'В эфире', title: lead.title, sub: `${lead.artist} · ${nf.format(lead.plays)} слушали за сутки`, cover: lead.cover, play: () => engine.playList(d.ru.length ? d.ru : d.top, 0), liked: heartFor(lead) })
-          : hero({ kicker: 'VITON13', title: 'Музыка', sub: 'Радио, свободная музыка, подкасты и ваши файлы' }),
+          : hero({ kicker: 'VITON13', title: 'VIT Music', sub: 'Радио, свободная музыка, подкасты и ваши треки' }),
         rows(d.ru.slice(0, 8), { head: 'Популярное радио', count: 'Россия' }),
         sec('Настроение', chips(d.tags, null, (tag) => go({ name: 'radio', tag, title: d.tags.find((x) => x[0] === tag)?.[1], from: 'radio' }))),
         d.recent.length ? rows(d.recent.slice(0, 6), { head: 'Вы недавно слушали', stat: (t) => KIND[t.kind] || '' }) : null,
@@ -245,8 +256,30 @@ export default function view(ctx) {
     },
     async local() {
       const d = await api('/api/music/library');
-      return [h('div', { class: 'mu-title' }, h('h1', null, 'Моя музыка'), h('p', null, `Файлы из папки ${d.folder} на этом компьютере. Никуда не загружаются.`)),
+      return [h('div', { class: 'mu-title' }, h('h1', null, 'Папка «Музыка»'), h('p', null, `Файлы из папки ${d.folder} на этом компьютере — только для чтения. Чтобы трек был в VIT Music и в облаке, загрузите его в «Мои треки».`)),
         rows(d.items, { head: 'Файлы', count: String(d.items.length), stat: (t) => t.album || '' }) || empty('В папке «Музыка» пока нет файлов', 'Положите туда mp3, m4a или flac — и они появятся здесь.')];
+    },
+    async mine() {
+      const d = await api('/api/music/up'); data.upCount = d.items.length; paintNav();
+      let c = null;                                                        // the cloud: ready / locked / not yet on the site
+      if (d.cloudAllowed) { try { c = await api('/api/music/cloud'); } catch (e) { c = { state: e.code || 'error', message: e.message }; } }
+      const list = [...d.items, ...(c?.state === 'ready' ? c.items : [])];
+      const macBytes = d.items.reduce((n, t) => n + (t.size || 0), 0);
+      const macCard = h('div', { class: 'mu-store' }, h('span', { class: 'mu-store-ic' }, ic('mac')), h('div', null, h('b', null, 'На этом Mac'),
+        h('small', null, d.items.length ? `${d.items.length} ${plural(d.items.length, 'трек', 'трека', 'треков')} · ${MB(macBytes)} · бесплатно` : 'Бесплатно, без ограничений по времени')));
+      let cloudCard;
+      if (!d.cloudAllowed) cloudCard = h('button', { class: 'mu-store locked', onclick: () => ctx.upgrade('music-upload') }, h('span', { class: 'mu-store-ic' }, ic('cloud')),
+        h('div', null, h('b', null, 'В облаке VITON13'), h('small', null, 'С подпиской VIT: ваша музыка в интернете и на всех устройствах')));
+      else if (c?.state === 'ready') { const pct = c.quota ? Math.min(100, (c.used / c.quota) * 100) : 0;
+        cloudCard = h('div', { class: 'mu-store' }, h('span', { class: 'mu-store-ic on' }, ic('cloud')), h('div', null, h('b', null, 'В облаке VITON13'),
+          h('small', null, `${c.all} ${plural(c.all, 'трек', 'трека', 'треков')} · ${MB(c.used)} из ${MB(c.quota)}`), h('span', { class: 'mu-meter' }, h('i', { style: `width:${pct.toFixed(1)}%` })))); }
+      else cloudCard = h('div', { class: 'mu-store wait' }, h('span', { class: 'mu-store-ic' }, ic('cloud')), h('div', null, h('b', null, 'В облаке VITON13'),
+        h('small', null, c?.state === 'no_cloud' ? 'Облако VIT Music появится после обновления viton13.com' : c?.message || 'Облако сейчас недоступно')));
+      const drop = h('button', { class: 'mu-drop-zone', onclick: pickFiles }, ic('up'), h('div', null, h('b', null, 'Загрузить музыку'), h('small', null, 'или перетащите файлы в окно · mp3, m4a, aac, flac, wav, ogg · до 50 МБ')));
+      return [h('div', { class: 'mu-title' }, h('h1', null, 'Мои треки'), h('p', null, 'Ваша музыка в VIT Music. На этом Mac — бесплатно; в облаке VITON13 — с подпиской VIT, чтобы треки были в интернете и на других устройствах.')),
+        h('div', { class: 'mu-stores' }, macCard, cloudCard), drop, upq,
+        rows(list, { head: 'Треки', count: String(list.length), stat: placeMark }) || empty('Пока пусто', 'Загрузите первый трек — он появится здесь с обложкой и тегами.'),
+        h('p', { class: 'mu-fine' }, 'Загружайте музыку, на которую у вас есть права. Облако личное: ссылок для всех нет.')];
     },
     async likes() {
       const d = await api('/api/music/likes'); syncLikes(d.items);
@@ -263,12 +296,98 @@ export default function view(ctx) {
       const d = await api('/api/music/search?q=' + encodeURIComponent(r.q));
       const any = d.radio.length + d.free.length + d.pods.length + d.local.length;
       return [h('div', { class: 'mu-title' }, h('h1', null, `«${r.q}»`), h('p', null, any ? 'Нашлось в радио, свободной музыке, подкастах и ваших файлах.' : 'Ничего не нашлось. Попробуйте другое слово.')),
-        rows(d.local, { head: 'Моя музыка', stat: (t) => t.album || '' }), rows(d.radio, { head: 'Радио' }),
+        rows(d.local, { head: 'Ваша музыка', stat: (t) => (t.place ? placeMark(t) : t.album || '') }), rows(d.radio, { head: 'Радио' }),
         sec('Свободная музыка', d.free.length ? cards(d.free, openAlbum, (a) => `${a.artist} · ${a.license}`) : null),
         sec('Подкасты', d.pods.length ? cards(d.pods, openShow) : null)];
     },
   };
   function syncLikes(items) { if (Array.isArray(items)) { engine.state.liked = new Set(items.map((t) => t.key)); } }
+
+  // ── VIT Music: uploading, the place of a track, editing ──
+  const plural = (n, one, few, many) => { const a = n % 10, b = n % 100; return a === 1 && b !== 11 ? one : a >= 2 && a <= 4 && (b < 12 || b > 14) ? few : many; };
+  const PLACE = { mac: ['mac', 'Mac'], cloud: ['cloud', 'Облако'], both: ['cloud', 'Mac и облако'] };
+  function placeMark(t) { const p = PLACE[t.place]; return p ? h('span', { class: 'mu-place ' + t.place, title: t.place === 'both' ? 'Есть на этом Mac и в облаке' : t.place === 'cloud' ? 'Только в облаке VITON13' : 'Только на этом Mac' }, ic(p[0]), p[1]) : (t.album || ''); }
+  const upq = h('div', { class: 'mu-upq' });                             // files on their way in
+  const canUpload = () => { if (ctx.plan === 'guest') { ctx.upgrade?.('music-upload'); return false; } return true; };
+  function pickFiles() {
+    if (!canUpload()) return;
+    const inp = h('input', { type: 'file', multiple: true, accept: '.mp3,.m4a,.aac,.flac,.wav,.ogg,.oga,.opus,audio/*' });
+    inp.onchange = () => uploadFiles([...inp.files]); inp.click();
+  }
+  const durationOf = (file) => new Promise((ok) => { const a = new Audio(), u = URL.createObjectURL(file), done = (v) => { URL.revokeObjectURL(u); ok(v); };
+    a.preload = 'metadata'; a.onloadedmetadata = () => done(Number.isFinite(a.duration) ? a.duration : 0); a.onerror = () => done(0); setTimeout(() => done(0), 5000); a.src = u; });
+  async function uploadFiles(files) {
+    if (!files.length || !canUpload()) return;
+    let added = 0;
+    for (const f of files) {
+      const row = h('div', { class: 'mu-upq-i' }, h('span', { class: 'mu-upq-n' }, f.name), h('span', { class: 'mu-upq-bar' }, h('i')), h('small', null, MB(f.size)));
+      upq.append(row); const bar = row.querySelector('.mu-upq-bar i'), note = row.querySelector('small');
+      if (f.size > UP_MAX) { row.classList.add('bad'); note.textContent = 'больше 50 МБ'; continue; }
+      if (!UP_EXT.test(f.name) && !/^audio\//.test(f.type)) { row.classList.add('bad'); note.textContent = 'не аудиофайл'; continue; }
+      const duration = await durationOf(f);
+      const res = await new Promise((ok) => {
+        const x = new XMLHttpRequest(); x.open('POST', '/api/music/up'); x.setRequestHeader('x-file-name', encodeURIComponent(f.name)); x.setRequestHeader('x-duration', String(Math.round(duration * 10) / 10));
+        x.upload.onprogress = (e) => { if (e.lengthComputable) bar.style.width = (e.loaded / e.total * 100).toFixed(1) + '%'; };
+        x.onload = () => { let d = {}; try { d = JSON.parse(x.responseText); } catch { /* not json */ } ok({ status: x.status, d }); }; x.onerror = () => ok({ status: 0, d: {} }); x.send(f);
+      });
+      if (res.status === 402) { row.remove(); ctx.upgrade?.('music-upload'); return; }
+      if (res.status !== 200 || !res.d.ok) { row.classList.add('bad'); note.textContent = res.d.message || 'не загрузился'; continue; }
+      bar.style.width = '100%'; row.classList.add('done'); note.textContent = 'готово'; added++; setTimeout(() => row.remove(), 1600);
+    }
+    if (added) { data.upCount = (data.upCount || 0) + added; paintNav(); toast(added === 1 ? 'Трек в VIT Music' : `${added} ${plural(added, 'трек', 'трека', 'треков')} в VIT Music`); if (route.name === 'mine') render(); else go({ name: 'mine' }, true); }
+  }
+  // drag files onto the window
+  const dropHint = h('div', { class: 'mu-drop', 'aria-hidden': 'true' }, h('div', null, ic('up'), h('b', null, 'Отпустите — и трек в VIT Music'), h('small', null, 'mp3, m4a, aac, flac, wav, ogg · до 50 МБ')));
+  win.append(dropHint); let dragDepth = 0;
+  const hasFiles = (e) => [...(e.dataTransfer?.types || [])].includes('Files');
+  win.addEventListener('dragenter', (e) => { if (!hasFiles(e)) return; e.preventDefault(); dragDepth++; win.classList.add('mu-dragging'); });
+  win.addEventListener('dragover', (e) => { if (hasFiles(e)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } });
+  win.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; win.classList.remove('mu-dragging'); } });
+  win.addEventListener('drop', (e) => { if (!hasFiles(e)) return; e.preventDefault(); dragDepth = 0; win.classList.remove('mu-dragging'); uploadFiles([...e.dataTransfer.files]); });
+
+  async function toCloud(t) {
+    try { await api(`/api/music/up/${t.id}/cloud`, { method: 'POST', body: {} }); toast('Трек в облаке VITON13'); render(); }
+    catch (e) { if (e.status === 402) ctx.upgrade?.('music-upload'); else toast(e.message); }
+  }
+  async function toMac(t) {
+    try { toast('Скачиваю на этот Mac…'); await api(`/api/music/cloud/${t.cloud}/download`, { method: 'POST', body: {} }); toast('Трек теперь и на этом Mac'); render(); } catch (e) { toast(e.message); }
+  }
+  function saveFile(t) { const a = h('a', { href: `/api/music/up/${t.id}?download=1`, download: t.name || t.title }); document.body.append(a); a.click(); a.remove(); }
+  async function removeTrack(t, where) {
+    const q = where === 'cloud' ? `Удалить «${t.title}» из облака VITON13?${t.place === 'both' ? ' На этом Mac он останется.' : ''}` : `Удалить «${t.title}» с этого Mac?${t.place === 'both' ? ' В облаке он останется.' : ''}`;
+    if (!confirm(q)) return;
+    try { if (where === 'cloud') await api(`/api/music/cloud/${t.cloud}`, { method: 'DELETE' }); else { await api(`/api/music/up/${t.id}`, { method: 'DELETE' }); data.upCount = Math.max(0, (data.upCount || 1) - 1); }
+      paintNav(); render(); } catch (e) { toast(e.message); }
+  }
+  /** Rename a track and give it a cover: the picture is cut to a 600×600 square and sent as webp. */
+  function editSheet(t) {
+    const local = t.kind === 'upload';
+    const title = h('input', { class: 'mu-field', value: t.title || '', maxlength: 120, placeholder: 'Название', 'aria-label': 'Название' });
+    const artist = h('input', { class: 'mu-field', value: t.artist || '', maxlength: 90, placeholder: 'Исполнитель', 'aria-label': 'Исполнитель' });
+    const album = h('input', { class: 'mu-field', value: t.album || '', maxlength: 90, placeholder: 'Альбом', 'aria-label': 'Альбом' });
+    let coverBlob = null; const prev = h('span', { class: 'mu-sheet-art' }, art(t.cover, t.title, 'md'));
+    const pickCover = h('button', { class: 'mu-pill soft', type: 'button', onclick: () => { const i = h('input', { type: 'file', accept: 'image/jpeg,image/png,image/webp' }); i.onchange = () => i.files[0] && squareWebp(i.files[0]).then((b) => { coverBlob = b; prev.replaceChildren(h('span', { class: 'mu-art md' }, h('img', { src: URL.createObjectURL(b), alt: '' }))); }).catch(() => toast('Не получилось открыть картинку')); i.click(); } }, 'Выбрать обложку');
+    const save = h('button', { class: 'mu-pill solid', type: 'submit' }, 'Сохранить');
+    const close = () => { sheet.classList.remove('in'); setTimeout(() => sheet.remove(), 260); };
+    const sheet = h('div', { class: 'mu-sheet', onclick: (e) => { if (e.target === sheet) close(); } }, h('form', { class: 'mu-sheet-in', onsubmit: async (e) => { e.preventDefault(); save.disabled = true;
+      try {
+        if (local) { await api(`/api/music/up/${t.id}`, { body: { title: title.value, artist: artist.value, album: album.value } });
+          if (coverBlob) { const r = await fetch(`/api/music/up/${t.id}/cover`, { method: 'POST', body: coverBlob }); if (!r.ok) throw new Error((await r.json().catch(() => ({}))).message || 'Обложка не сохранилась'); } }
+        else await api(`/api/music/cloud/${t.cloud}`, { body: { title: title.value, artist: artist.value, album: album.value } });
+        close(); toast('Сохранено'); render();
+      } catch (er) { save.disabled = false; toast(er.message); } } },
+      h('div', { class: 'mu-sheet-head' }, prev, h('div', null, h('b', null, 'Трек'), h('small', null, local ? (t.place === 'both' ? 'На этом Mac и в облаке' : 'На этом Mac') : 'В облаке VITON13'))),
+      title, artist, album, local ? pickCover : h('small', { class: 'mu-fine' }, 'Обложку можно сменить, когда трек есть на этом Mac.'),
+      h('div', { class: 'mu-sheet-acts' }, h('button', { class: 'mu-pill soft', type: 'button', onclick: close }, 'Отмена'), save)));
+    root.append(sheet); requestAnimationFrame(() => sheet.classList.add('in')); title.focus();
+  }
+  function squareWebp(file) {
+    return new Promise((ok, no) => { const img = new Image(), u = URL.createObjectURL(file);
+      img.onload = () => { const c = document.createElement('canvas'); c.width = c.height = 600; const s = Math.min(img.naturalWidth, img.naturalHeight);
+        c.getContext('2d').drawImage(img, (img.naturalWidth - s) / 2, (img.naturalHeight - s) / 2, s, s, 0, 0, 600, 600); URL.revokeObjectURL(u);
+        c.toBlob((b) => (b ? ok(b) : no(new Error('webp'))), 'image/webp', 0.86); };
+      img.onerror = () => { URL.revokeObjectURL(u); no(new Error('image')); }; img.src = u; });
+  }
 
   // the ⋯ menu: queue, playlist, source
   let pop = null;
@@ -277,8 +396,16 @@ export default function view(ctx) {
     const close = () => { pop?.remove(); pop = null; document.removeEventListener('pointerdown', away, true); };
     const away = (e) => { if (!pop?.contains(e.target)) close(); };
     const item = (label, fn) => h('button', { class: 'mu-pop-i', onclick: () => { close(); fn(); } }, label);
+    const own = t.kind === 'upload' || t.kind === 'cloud';
     pop = h('div', { class: 'mu-pop', role: 'menu' },
       item('Играть следующим', () => { engine.enqueue(t); toast('Добавлено в очередь'); }),
+      ...(own ? [
+        t.kind === 'upload' ? item('Скачать файл', () => saveFile(t)) : item('Скачать на этот Mac', () => toMac(t)),
+        item('Изменить', () => editSheet(t)),
+        t.kind === 'upload' && !t.cloud ? item('Загрузить в облако VITON13', () => toCloud(t)) : null,
+        t.kind === 'upload' ? item('Удалить с этого Mac', () => removeTrack(t, 'mac')) : null,
+        t.cloud ? item('Удалить из облака', () => removeTrack(t, 'cloud')) : null,
+      ].filter(Boolean) : []),
       ...(data.playlists || []).map((p) => item(`В плейлист «${p.title}»`, async () => { try { data.playlists = (await api('/api/music/playlists/' + p.id, { body: { track: t } })).items; paintNav(); toast(`Добавлено в «${p.title}»`); } catch (e) { toast(e.message); } })),
       item('Новый плейлист с этим треком', async () => { const title = prompt('Название плейлиста'); if (!title?.trim()) return; try { const d = await api('/api/music/playlists', { body: { title } }); data.playlists = (await api('/api/music/playlists/' + d.id, { body: { track: t } })).items; paintNav(); toast(`Плейлист «${title.trim()}» создан`); } catch (e) { toast(e.message); } }),
       t.link && item('Открыть источник', () => window.open(t.link, '_blank', 'noopener')),
@@ -358,5 +485,6 @@ export default function view(ctx) {
   paintNav(); paintBar('init'); render();
   api('/api/music/likes').then((d) => { syncLikes(d.items); paintNav(); paintRows(); paintBar('like'); }).catch(() => {});
   api('/api/music/playlists').then((d) => { data.playlists = d.items; paintNav(); }).catch(() => {});
+  api('/api/music/up').then((d) => { data.upCount = d.items.length; paintNav(); }).catch(() => {});
   return { root, destroy() { alive = false; off(); pop?.remove(); clearTimeout(st); window.removeEventListener('keydown', onKey); } };     // the music keeps playing
 }

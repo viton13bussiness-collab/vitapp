@@ -2,15 +2,21 @@
 // (Creative Commons and public domain only, with the licence on every track), podcasts (Apple's public catalogue + the
 // shows' own RSS), and the person's own files from ~/Music. Only metadata passes through here; streams play from their
 // own addresses, except local files, which this route serves with Range so seeking works.
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { db, all, one, run, now } from '../db.mjs';
+import { DATA } from '../config.mjs';
+import { can } from '../plan.mjs';
+import { siteCall, siteMode, SITE } from './messages.mjs';
 
 db.exec(`CREATE TABLE IF NOT EXISTS music_likes (user TEXT, key TEXT, track TEXT, created INTEGER, PRIMARY KEY (user, key));
 CREATE TABLE IF NOT EXISTS music_recent (user TEXT, key TEXT, track TEXT, played INTEGER, PRIMARY KEY (user, key));
 CREATE TABLE IF NOT EXISTS music_playlists (id INTEGER PRIMARY KEY, user TEXT, title TEXT, created INTEGER);
-CREATE TABLE IF NOT EXISTS music_playlist_items (pl INTEGER, key TEXT, track TEXT, pos INTEGER, PRIMARY KEY (pl, key));`);
+CREATE TABLE IF NOT EXISTS music_playlist_items (pl INTEGER, key TEXT, track TEXT, pos INTEGER, PRIMARY KEY (pl, key));
+CREATE TABLE IF NOT EXISTS music_uploads (id TEXT PRIMARY KEY, user TEXT, name TEXT, file TEXT, type TEXT, size INTEGER, title TEXT, artist TEXT, album TEXT, duration REAL, cover TEXT, cloud TEXT, created INTEGER);
+CREATE INDEX IF NOT EXISTS music_uploads_user ON music_uploads (user, created);`);
 
 const UA = 'VITON13/0.3 (desktop app; radio player)';
 const bad = (msg) => Object.assign(new Error(msg), { user: true });
@@ -192,10 +198,11 @@ function sendFile(req, res, full) {
 // ── likes, history, playlists ───────────────────────────────────────────────
 function cleanTrack(t) {
   if (!t || typeof t !== 'object') throw bad('Нет трека');
-  const key = clip(t.key, 300); if (!/^(radio|ia|pod|local):/.test(key)) throw bad('Нет трека');
-  const src = String(t.src || ''); if (!(/^https:\/\//.test(src) || /^\/api\/music\/file\/[\w-]+$/.test(src))) throw bad('Нет трека');
-  const pick = { key, kind: clip(t.kind, 12), title: clip(t.title, 120), artist: clip(t.artist, 90), album: clip(t.album, 90), cover: /^(https:\/\/|\/api\/music\/cover\/)/.test(String(t.cover || '')) ? clip(t.cover, 400) : '',
+  const key = clip(t.key, 300); if (!/^(radio|ia|pod|local|up|cloud):/.test(key)) throw bad('Нет трека');
+  const src = String(t.src || ''); if (!(/^https:\/\//.test(src) || /^\/api\/music\/file\/[\w-]+$/.test(src) || /^\/api\/music\/up\/[\w-]+$/.test(src) || /^\/api\/music\/cloud\/[\w-]+\/stream$/.test(src))) throw bad('Нет трека');
+  const pick = { key, kind: clip(t.kind, 12), title: clip(t.title, 120), artist: clip(t.artist, 90), album: clip(t.album, 90), cover: /^(https:\/\/|\/api\/music\/cover\/|\/api\/music\/(up|cloud)\/[\w-]+\/cover)/.test(String(t.cover || '')) ? clip(t.cover, 400) : '',
     src: clip(src, 600), duration: Math.max(0, Math.min(1e6, Number(t.duration) || 0)), live: !!t.live, license: clip(t.license, 60), licenseUrl: https(t.licenseUrl), link: https(t.link) };
+  if (/^(up|cloud):/.test(key)) { pick.id = clip(t.id, 40); pick.cloud = clip(t.cloud, 60); pick.place = ['mac', 'cloud', 'both'].includes(t.place) ? t.place : ''; }
   return pick;
 }
 const parsed = (rows) => rows.map((r) => { try { return JSON.parse(r.track); } catch { return null; } }).filter(Boolean);
@@ -205,6 +212,138 @@ const playlists = (user) => all('SELECT p.id, p.title, p.created, (SELECT COUNT(
 const ownList = (user, id) => one('SELECT * FROM music_playlists WHERE id = ? AND user = ?', Number(id), user);
 
 const safe = async (fn, fallback) => { try { return await fn(); } catch (e) { if (e.user) throw e; console.error('[music]', e.message); return fallback; } };
+
+// ── VIT Music: the person's own tracks ──────────────────────────────────────
+// Level one — «На этом Mac»: the file lives in DATA/music-uploads/<user>/, free, nothing leaves the computer.
+// Level two — «В облаке VITON13»: a private copy in viton13.com's storage (site-patch/music-cloud), so the track is on
+// the internet and on every device with this VITON ID. Cloud is part of the subscription (whatever spends gigabytes is paid).
+const UP_MAX = 50 * 1024 * 1024, COVER_MAX = 2 * 1024 * 1024;
+const UP_ROOT = path.join(DATA, 'music-uploads');
+const upDir = (user) => { const d = path.join(UP_ROOT, String(user.id).replace(/[^\w-]/g, '_')); fs.mkdirSync(d, { recursive: true }); return d; };
+const upRow = (user, id) => (/^[\w-]{6,40}$/.test(String(id)) ? one('SELECT * FROM music_uploads WHERE id = ? AND user = ?', String(id), user.id) : null);
+const AUDIO_TYPES = { mp3: 'audio/mpeg', m4a: 'audio/mp4', aac: 'audio/aac', flac: 'audio/flac', wav: 'audio/wav', ogg: 'audio/ogg' };
+/** What the bytes really are — the extension does not count. */
+function sniffAudio(b) {
+  if (b.length < 12) return null;
+  const s = (a, z) => b.toString('latin1', a, z);
+  if (s(0, 3) === 'ID3') return 'mp3';
+  if (s(0, 4) === 'fLaC') return 'flac';
+  if (s(0, 4) === 'OggS') return 'ogg';
+  if (s(0, 4) === 'RIFF' && s(8, 12) === 'WAVE') return 'wav';
+  if (s(4, 8) === 'ftyp' && /^(M4A |M4B |M4P |mp42|mp41|isom|iso2|dash)$/.test(s(8, 12))) return 'm4a';
+  if (b[0] === 0xff && (b[1] & 0xf6) === 0xf0) return 'aac';                         // ADTS
+  if (b[0] === 0xff && (b[1] & 0xe0) === 0xe0 && (b[1] & 0x06) !== 0) return 'mp3';  // an MPEG audio frame without a tag
+  return null;
+}
+function sniffImage(b) {
+  if (b.length < 12) return null;
+  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'jpg';
+  if (b.toString('latin1', 1, 4) === 'PNG') return 'png';
+  if (b.toString('latin1', 0, 4) === 'RIFF' && b.toString('latin1', 8, 12) === 'WEBP') return 'webp';
+  return null;
+}
+const IMAGE_TYPES = { jpg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
+/** Title, artist, album and cover from an MP4/M4A file's iTunes atoms (moov › udta › meta › ilst). */
+function mp4tags(b) {
+  const out = {};
+  const boxes = (start, end, fn) => { for (let i = start; i + 8 <= end;) { let size = b.readUInt32BE(i); const type = b.toString('latin1', i + 4, i + 8); let head = 8;
+    if (size === 1 && i + 16 <= end) { size = Number(b.readBigUInt64BE(i + 8)); head = 16; } else if (size === 0) size = end - i;
+    if (size < head || i + size > end) break; fn(type, i + head, i + size); i += size; } };
+  const data = (s, e, fn) => boxes(s, e, (t, a, z) => { if (t === 'data' && z - a > 8) fn(b.readUInt32BE(a) & 0xffffff, b.subarray(a + 8, z)); });
+  try {
+    boxes(0, b.length, (t, a, z) => { if (t !== 'moov') return; boxes(a, z, (t2, a2, z2) => { if (t2 !== 'udta') return; boxes(a2, z2, (t3, a3, z3) => { if (t3 !== 'meta') return;
+      boxes(a3 + 4, z3, (t4, a4, z4) => { if (t4 !== 'ilst') return; boxes(a4, z4, (t5, a5, z5) => {
+        const text = (v) => data(a5, z5, (kind, val) => { if (kind === 1) out[v] = val.toString('utf8').trim(); });
+        if (t5 === '\xa9nam') text('title'); else if (t5 === '\xa9ART' || t5 === 'aART') { if (!out.artist) text('artist'); } else if (t5 === '\xa9alb') text('album');
+        else if (t5 === 'covr') data(a5, z5, (kind, val) => { if (!out.cover && (kind === 13 || kind === 14)) out.cover = { ext: kind === 14 ? 'png' : 'jpg', data: Buffer.from(val) }; });
+      }); }); }); }); });
+  } catch { /* a broken atom → names from the file */ }
+  return out;
+}
+const coverUrl = (r) => (r.cover ? `/api/music/up/${r.id}/cover?v=${encodeURIComponent(r.cover.split('.').slice(-2, -1)[0] || '1')}` : '');
+const upTrack = (r) => ({ key: 'up:' + r.id, kind: 'upload', id: r.id, title: r.title, artist: r.artist || '', album: r.album || '', duration: r.duration || 0, cover: coverUrl(r),
+  src: `/api/music/up/${r.id}`, size: r.size, name: r.name, type: r.type, added: r.created, cloud: r.cloud || '', place: r.cloud ? 'both' : 'mac' });
+const cloudTrack = (t) => ({ key: 'cloud:' + t.id, kind: 'cloud', id: '', cloud: t.id, title: clip(t.title, 120) || 'Без названия', artist: clip(t.artist, 90), album: clip(t.album, 90), duration: Number(t.duration) || 0,
+  cover: t.hasCover ? `/api/music/cloud/${t.id}/cover` : '', src: `/api/music/cloud/${t.id}/stream`, size: Number(t.size) || 0, name: clip(t.name, 160), type: t.type || '', added: Date.parse(t.createdAt) || 0, place: 'cloud' });
+const uploads = (user) => all('SELECT * FROM music_uploads WHERE user = ? ORDER BY created DESC', user.id).map(upTrack);
+async function readBody(req, limit, msg) {
+  const chunks = []; let n = 0;
+  for await (const c of req) { n += c.length; if (n > limit) throw Object.assign(new Error(msg), { http: 413 }); chunks.push(c); }
+  return Buffer.concat(chunks);
+}
+function saveCover(user, r, bytes, ext) {
+  const dir = upDir(user), name = `${r.id}.cover.${Date.now().toString(36)}.${ext}`;
+  fs.writeFileSync(path.join(dir, name), bytes);
+  if (r.cover) fs.rmSync(path.join(dir, path.basename(r.cover)), { force: true });
+  run('UPDATE music_uploads SET cover = ? WHERE id = ?', name, r.id); return name;
+}
+function addLocal(user, bytes, ext, { name, title, artist, album, duration, cloud = null, coverBytes = null, coverExt = null }) {
+  const id = crypto.randomBytes(9).toString('base64url'), dir = upDir(user), file = `${id}.${ext}`;
+  fs.writeFileSync(path.join(dir, file), bytes);
+  let tags = {};
+  if (ext === 'mp3') { tags = id3(path.join(dir, file)); const c = cover(path.join(dir, file)); if (c && !coverBytes) { coverBytes = c.data; coverExt = c.mime === 'image/png' ? 'png' : 'jpg'; } }
+  else if (ext === 'm4a') { tags = mp4tags(bytes); if (tags.cover && !coverBytes) { coverBytes = tags.cover.data; coverExt = tags.cover.ext; } }
+  const base = String(name || 'Трек').replace(/\.[a-z0-9]{2,5}$/i, '').replace(/^\d+\s*[-.]?\s*/, '').trim();
+  run('INSERT INTO music_uploads (id, user, name, file, type, size, title, artist, album, duration, cover, cloud, created) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    id, user.id, clip(name || file, 160), file, AUDIO_TYPES[ext], bytes.length, clip(title || tags.title || base || 'Без названия', 120), clip(artist || tags.artist || '', 90), clip(album || tags.album || '', 90),
+    Math.max(0, Math.min(1e5, Number(duration) || 0)), null, cloud, now());
+  const r = one('SELECT * FROM music_uploads WHERE id = ?', id);
+  if (coverBytes && coverBytes.length <= COVER_MAX && sniffImage(coverBytes)) saveCover(user, r, coverBytes, coverExt || sniffImage(coverBytes));
+  return one('SELECT * FROM music_uploads WHERE id = ?', id);
+}
+function removeLocal(user, r) {
+  const dir = upDir(user); for (const f of [r.file, r.cover]) if (f) fs.rmSync(path.join(dir, path.basename(f)), { force: true });
+  run('DELETE FROM music_uploads WHERE id = ?', r.id);
+}
+
+// the cloud goes through the site bridge (server/worlds/messages.mjs) with the person's viton13.com session
+const CLOUD_CODES = {
+  QUOTA_EXCEEDED: 'Место в облаке закончилось — 2 ГБ на человека. Удалите что-нибудь из облака.', CLOUD_FULL: 'Облако VITON13 сейчас заполнено. Трек остаётся на этом Mac.',
+  DAILY_LIMIT: 'На сегодня лимит облака исчерпан. Завтра всё снова будет доступно.', TOO_MANY_REQUESTS: 'Слишком много загрузок подряд. Подождите немного.',
+  FILE_TOO_LARGE: 'Файл больше 50 МБ.', UNSUPPORTED_TYPE: 'Облако принимает mp3, m4a, aac, flac, wav и ogg.', NOT_FOUND: 'Трек не найден в облаке.', UPLOAD_INCOMPLETE: 'Файл не дошёл до облака целиком. Попробуйте ещё раз.',
+  MUSIC_CLOUD_NOT_CONFIGURED: 'Облако VIT Music на viton13.com ещё не настроено.',
+};
+const NO_CLOUD = 'Облако VIT Music появится после обновления viton13.com';
+const okHost = (u) => { try { const x = new URL(u); return (x.protocol === 'https:' && /(^|\.)googleapis\.com$/i.test(x.hostname)) || x.origin === new URL(SITE).origin; } catch { return false; } };
+async function cloud(user, method, p, body) {
+  if (!can(user, 'music.cloud')) throw Object.assign(new Error('Облако VIT Music — с подпиской VIT. На этом Mac треки хранятся бесплатно.'), { http: 402, code: 'subscribe' });
+  if (siteMode === 'none') throw Object.assign(new Error('Облако работает в окне приложения VITON13'), { http: 409, code: 'window' });
+  const r = await siteCall(user, method, '/api/music-cloud' + p, body);
+  if (r.status === 0) throw Object.assign(new Error('viton13.com сейчас не отвечает'), { http: 503, code: 'down' });
+  if (r.status === 401) throw Object.assign(new Error('Войдите на viton13.com — кнопка «Войти» в Сообщениях'), { http: 401, code: 'signin' });
+  if ((r.status === 404 || r.status === 405) && (!r.data || !r.data.code || (p === '' && r.data.code === 'NOT_FOUND'))) throw Object.assign(new Error(NO_CLOUD), { http: 501, code: 'no_cloud' });
+  if (r.status >= 400 || !r.data?.ok) throw Object.assign(new Error(CLOUD_CODES[r.data?.code] || 'Облако не смогло выполнить запрос'), { http: r.status >= 400 ? r.status : 502, code: r.data?.code || 'site' });
+  return r.data;
+}
+const cloudErr = (e, json) => json(e.http || 500, { ok: false, code: e.code || 'site', message: e.message });
+async function cloudUpload(user, r) {
+  const bytes = fs.readFileSync(path.join(upDir(user), r.file));
+  const d = await cloud(user, 'POST', '/uploads', { name: r.name, type: r.type, size: r.size, title: r.title, artist: r.artist, album: r.album, duration: r.duration });
+  if (!d.track?.id || !okHost(d.uploadUrl)) throw Object.assign(new Error('Облако дало странный адрес загрузки'), { http: 502 });
+  const put = await fetch(d.uploadUrl, { method: 'PUT', headers: { 'content-type': r.type, 'content-length': String(bytes.length) }, body: bytes, signal: AbortSignal.timeout(300000) }).catch(() => null);
+  if (!put || put.status >= 300) throw Object.assign(new Error(CLOUD_CODES.UPLOAD_INCOMPLETE), { http: 502 });
+  let coverB64 = '', coverType = '';
+  if (r.cover) { try { const c = fs.readFileSync(path.join(upDir(user), path.basename(r.cover))); if (c.length <= 300 * 1024) { coverB64 = c.toString('base64'); coverType = IMAGE_TYPES[sniffImage(c)] || ''; } } catch { /* no cover */ } }
+  await cloud(user, 'POST', `/${d.track.id}/complete`, coverB64 && coverType ? { cover: coverB64, coverType } : {});
+  run('UPDATE music_uploads SET cloud = ? WHERE id = ?', d.track.id, r.id);
+  return d.track.id;
+}
+async function cloudBytes(user, cid) {
+  const d = await cloud(user, 'GET', `/${cid}/url`);
+  if (!okHost(d.url)) throw Object.assign(new Error('Облако дало странный адрес'), { http: 502 });
+  const r = await fetch(d.url, { signal: AbortSignal.timeout(300000) }).catch(() => null);
+  if (!r || !r.ok) throw Object.assign(new Error('Не получилось скачать трек из облака'), { http: 502 });
+  const b = Buffer.from(await r.arrayBuffer()); if (b.length > UP_MAX) throw Object.assign(new Error('Файл больше 50 МБ'), { http: 413 });
+  return { bytes: b, track: d.track || {} };
+}
+const coverCache = new Map();
+function sendUpload(req, res, full, r, download) {
+  if (!download) return sendFile(req, res, full);
+  const st = fs.statSync(full), name = r.name || `${r.title}.${r.file.split('.').pop()}`;
+  res.writeHead(200, { 'content-type': r.type || 'application/octet-stream', 'content-length': st.size, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff',
+    'content-disposition': `attachment; filename="${name.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '')}"; filename*=UTF-8''${encodeURIComponent(name)}` });
+  fs.createReadStream(full).pipe(res);
+}
 
 export async function handle({ req, res, url, user, seg, method, json, fail, body }) {
   if (seg[1] !== 'music') return false;
@@ -218,7 +357,7 @@ export async function handle({ req, res, url, user, seg, method, json, fail, bod
 
   if (p[0] === 'home' && method === 'GET') {
     const [ru, top, free, pods] = await Promise.all([safe(radioRu, []), safe(radioTop, []), safe(archiveTop, []), safe(podcastsTop, [])]);
-    json(200, { ok: true, ru, top, free, pods, tags: TAGS, likes: likes(user.id).slice(0, 50), recent: recent(user.id, 20), playlists: playlists(user.id), localCount: scan().length }); return true;
+    json(200, { ok: true, ru, top, free, pods, tags: TAGS, likes: likes(user.id).slice(0, 50), recent: recent(user.id, 20), playlists: playlists(user.id), localCount: scan().length, upCount: one('SELECT COUNT(*) AS n FROM music_uploads WHERE user = ?', user.id).n }); return true;
   }
   if (p[0] === 'radio' && method === 'GET') {
     const tag = clip(sp.get('tag'), 40), text = clip(sp.get('q'), 60), country = sp.get('country');
@@ -241,7 +380,70 @@ export async function handle({ req, res, url, user, seg, method, json, fail, bod
     const text = clip(sp.get('q'), 60); if (!text) { json(200, { ok: true, radio: [], free: [], pods: [], local: [] }); return true; }
     const low = text.toLowerCase();
     const [r, f, pd] = await Promise.all([safe(() => radioFind(text), []), safe(() => archiveFind(text), []), safe(() => podcastsFind(text), [])]);
-    json(200, { ok: true, radio: r.slice(0, 12), free: f.slice(0, 12), pods: pd.slice(0, 12), local: scan().filter((t) => `${t.title} ${t.artist} ${t.album}`.toLowerCase().includes(low)).slice(0, 30) }); return true;
+    json(200, { ok: true, radio: r.slice(0, 12), free: f.slice(0, 12), pods: pd.slice(0, 12), local: [...uploads(user).filter((t) => `${t.title} ${t.artist} ${t.album}`.toLowerCase().includes(low)), ...scan().filter((t) => `${t.title} ${t.artist} ${t.album}`.toLowerCase().includes(low))].slice(0, 30) }); return true;
+  }
+
+  // ── VIT Music: own tracks on this Mac ──
+  if (p[0] === 'up') {
+    if (method === 'GET' && p[1] && !p[2]) { const r = upRow(user, p[1]); const full = r && path.join(upDir(user), r.file); if (!r || !fs.existsSync(full)) { res.writeHead(404); res.end(); return true; } sendUpload(req, res, full, r, sp.get('download') === '1'); return true; }
+    if (method === 'GET' && p[1] && p[2] === 'cover') { const r = upRow(user, p[1]); const full = r?.cover && path.join(upDir(user), path.basename(r.cover));
+      if (!full || !fs.existsSync(full)) { res.writeHead(404); res.end(); return true; }
+      res.writeHead(200, { 'content-type': IMAGE_TYPES[full.split('.').pop()] || 'image/jpeg', 'cache-control': 'max-age=86400', 'x-content-type-options': 'nosniff' }); fs.createReadStream(full).pipe(res); return true; }
+    if (method === 'GET') { json(200, { ok: true, items: uploads(user), cloudAllowed: can(user, 'music.cloud'), canUpload: user.plan !== 'guest' }); return true; }
+    if (user.plan === 'guest') { json(402, { ok: false, code: 'subscribe', message: 'Загружать свою музыку можно с VITON ID' }); return true; }
+    if (method === 'POST' && !p[1]) {
+      const bytes = await readBody(req, UP_MAX, 'Файл больше 50 МБ'), ext = sniffAudio(bytes);
+      if (!ext) { fail(415, 'Это не аудиофайл. Подходят mp3, m4a, aac, flac, wav и ogg'); return true; }
+      let name = ''; try { name = decodeURIComponent(String(req.headers['x-file-name'] || '')); } catch { /* keep empty */ }
+      const r = addLocal(user, bytes, ext, { name: path.basename(name).slice(0, 160), duration: req.headers['x-duration'] });
+      json(200, { ok: true, track: upTrack(r) }); return true;
+    }
+    const r = p[1] && upRow(user, p[1]); if (!r) { fail(404, 'Трек не найден'); return true; }
+    if (method === 'POST' && p[2] === 'cover') {
+      const bytes = await readBody(req, COVER_MAX, 'Обложка больше 2 МБ'), ext = sniffImage(bytes); if (!ext) { fail(415, 'Обложка — jpg, png или webp'); return true; }
+      saveCover(user, r, bytes, ext); json(200, { ok: true, track: upTrack(one('SELECT * FROM music_uploads WHERE id = ?', r.id)) }); return true;
+    }
+    if (method === 'POST' && p[2] === 'cloud') { try { await cloudUpload(user, r); json(200, { ok: true, track: upTrack(one('SELECT * FROM music_uploads WHERE id = ?', r.id)) }); } catch (e) { cloudErr(e, json); } return true; }
+    if (method === 'POST' && !p[2]) {
+      const b = await body(), title = clip(b.title, 120), artist = clip(b.artist, 90), album = clip(b.album, 90);
+      if (!title) { fail(400, 'Назовите трек'); return true; }
+      run('UPDATE music_uploads SET title = ?, artist = ?, album = ? WHERE id = ?', title, artist, album, r.id);
+      if (typeof b.duration === 'number' && b.duration > 0 && !r.duration) run('UPDATE music_uploads SET duration = ? WHERE id = ?', Math.min(1e5, b.duration), r.id);
+      if (r.cloud && can(user, 'music.cloud')) cloud(user, 'PATCH', `/${r.cloud}`, { title, artist, album }).catch(() => {});            // the cloud copy follows, quietly
+      json(200, { ok: true, track: upTrack(one('SELECT * FROM music_uploads WHERE id = ?', r.id)) }); return true;
+    }
+    if (method === 'DELETE') { removeLocal(user, r); run("DELETE FROM music_likes WHERE user = ? AND key = ?", user.id, 'up:' + r.id); json(200, { ok: true }); return true; }
+  }
+  // ── VIT Music: the cloud copy on viton13.com ──
+  if (p[0] === 'cloud') {
+    const cid = p[1] && /^[\w-]{6,64}$/.test(p[1]) ? p[1] : null;
+    try {
+      if (!p[1] && method === 'GET') {
+        const d = await cloud(user, 'GET', ''), mine = new Set(all('SELECT cloud FROM music_uploads WHERE user = ? AND cloud IS NOT NULL', user.id).map((x) => x.cloud));
+        const tracks = Array.isArray(d.tracks) ? d.tracks : [];
+        // a local copy whose cloud twin is gone becomes «only on this Mac» again
+        const live = new Set(tracks.map((t) => t.id)); for (const c of mine) if (!live.has(c)) run('UPDATE music_uploads SET cloud = NULL WHERE user = ? AND cloud = ?', user.id, c);
+        json(200, { ok: true, state: 'ready', used: Number(d.usedBytes) || 0, quota: Number(d.quotaBytes) || 0, items: tracks.filter((t) => !mine.has(t.id)).map(cloudTrack), all: tracks.length }); return true;
+      }
+      if (!cid) { fail(404, 'Трек не найден'); return true; }
+      if (p[2] === 'stream' && method === 'GET') { const d = await cloud(user, 'GET', `/${cid}/url`); if (!okHost(d.url)) { res.writeHead(502); res.end(); return true; } res.writeHead(302, { location: d.url, 'cache-control': 'no-store' }); res.end(); return true; }
+      if (p[2] === 'cover' && method === 'GET') {
+        let c = coverCache.get(user.id + cid);
+        if (!c) { const d = await cloud(user, 'GET', `/${cid}/cover`); const b = Buffer.from(String(d.data || ''), 'base64'), ext = sniffImage(b); if (!ext) { res.writeHead(404); res.end(); return true; } c = { b, type: IMAGE_TYPES[ext] }; coverCache.set(user.id + cid, c); if (coverCache.size > 300) coverCache.delete(coverCache.keys().next().value); }
+        res.writeHead(200, { 'content-type': c.type, 'cache-control': 'max-age=3600', 'x-content-type-options': 'nosniff' }); res.end(c.b); return true;
+      }
+      if (p[2] === 'download' && method === 'POST') {
+        if (user.plan === 'guest') { json(402, { ok: false, code: 'subscribe', message: 'С VITON ID' }); return true; }
+        const have = one('SELECT * FROM music_uploads WHERE user = ? AND cloud = ?', user.id, cid); if (have) { json(200, { ok: true, track: upTrack(have) }); return true; }
+        const { bytes, track } = await cloudBytes(user, cid), ext = sniffAudio(bytes); if (!ext) { fail(415, 'В облаке лежит не аудиофайл'); return true; }
+        let coverBytes = null; if (track.hasCover) { try { const d = await cloud(user, 'GET', `/${cid}/cover`); coverBytes = Buffer.from(String(d.data || ''), 'base64'); } catch { /* without a cover */ } }
+        const r = addLocal(user, bytes, ext, { name: track.name, title: track.title, artist: track.artist, album: track.album, duration: track.duration, cloud: cid, coverBytes, coverExt: coverBytes ? sniffImage(coverBytes) : null });
+        json(200, { ok: true, track: upTrack(r) }); return true;
+      }
+      if (!p[2] && method === 'POST') { const b = await body(); await cloud(user, 'PATCH', `/${cid}`, { title: clip(b.title, 120), artist: clip(b.artist, 90), album: clip(b.album, 90) }); coverCache.delete(user.id + cid); json(200, { ok: true }); return true; }
+      if (!p[2] && method === 'DELETE') { await cloud(user, 'DELETE', `/${cid}`); run('UPDATE music_uploads SET cloud = NULL WHERE user = ? AND cloud = ?', user.id, cid); run('DELETE FROM music_likes WHERE user = ? AND key = ?', user.id, 'cloud:' + cid); json(200, { ok: true }); return true; }
+    } catch (e) { if (e.http) { cloudErr(e, json); return true; } throw e; }
+    fail(404, 'Нет такого адреса'); return true;
   }
 
   if (p[0] === 'likes') {

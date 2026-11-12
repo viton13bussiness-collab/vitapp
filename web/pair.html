@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="VITON13">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<link rel="icon" href="/app-icon.png">
+<title>VITON13</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; background: #000; color: #f5f5f7; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", sans-serif; -webkit-font-smoothing: antialiased; }
+  body { display: grid; place-items: center; padding: max(24px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom)); }
+  main { width: min(360px, 100%); text-align: center; animation: rise 0.9s cubic-bezier(0.16, 1, 0.3, 1) both; }
+  .mark { width: 60px; height: 60px; filter: invert(1) drop-shadow(0 0 22px rgba(255, 170, 90, 0.35)); margin-bottom: 20px; }
+  h1 { font-size: 30px; font-weight: 600; letter-spacing: -0.03em; } h1 sup { font-size: 0.42em; color: #ffcf9e; vertical-align: 1.05em; }
+  p { font-size: 16px; line-height: 1.45; color: rgba(245, 245, 247, 0.62); margin-top: 10px; }
+  .field { display: block; width: 100%; height: 54px; margin-top: 28px; border: 0; border-radius: 14px; background: rgba(255, 255, 255, 0.08); box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.14);
+    color: #fff; font: 600 22px ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: 0.22em; text-align: center; text-transform: uppercase; outline: none; }
+  .field:focus { box-shadow: inset 0 0 0 1px #2997ff; }
+  button { width: 100%; height: 52px; margin-top: 12px; border: 0; border-radius: 14px; background: #f5f5f7; color: #000; font: 600 17px -apple-system, sans-serif; }
+  button:disabled { opacity: 0.4; }
+  .err { min-height: 22px; margin-top: 12px; font-size: 14px; color: #ff6961; }
+  .steps { margin-top: 30px; text-align: left; display: grid; gap: 12px; font-size: 15px; color: rgba(245, 245, 247, 0.75); list-style: none; padding: 0; counter-reset: s; }
+  .steps li { display: flex; gap: 12px; align-items: center; } .steps li::before { counter-increment: s; content: counter(s); flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, 0.1); font-size: 13px; font-weight: 600; }
+  .hide { display: none; }
+  @keyframes rise { from { opacity: 0; transform: translateY(12px); } }
+</style>
+</head>
+<body>
+<main>
+  <img class="mark" src="/logo-mark.png" alt="">
+  <h1>VITON<sup>13</sup></h1>
+  <p id="lead">Подключаю этот телефон к VITON13 на вашем Mac…</p>
+  <form id="form" class="hide">
+    <input id="code" class="field" inputmode="text" autocomplete="one-time-code" maxlength="10" placeholder="КОД" aria-label="Код с экрана Mac">
+    <button id="go" type="submit" disabled>Подключить</button>
+  </form>
+  <div id="err" class="err" role="alert"></div>
+  <ol id="steps" class="steps hide"><li>На Mac: Настройки → Профиль → «iPhone и iPad»</li><li>Отсканируйте QR-код камерой iPhone</li><li>В Safari: Поделиться → «На экран Домой»</li></ol>
+</main>
+<script type="module" src="/pair.js"></script>
+</body>
+</html>

@@ -8,6 +8,7 @@ import { viewHome, themeSheet, initTheme, getTheme } from '/home.js';
 import { runIntro } from '/intro.js';
 import { gate, plansSheet } from '/gate.js';
 import { worldIcon } from '/world-icons.js';
+import { phoneCard } from '/lan-card.js';
 
 // ── state ───────────────────────────────────────────────────────────────────
 const S = { me: null, sub: null, conv: null, messages: [], cats: [], agents: [], jobs: new Map(), voice: {}, speak: 'voice', view: 'home', busy: false, memBadge: 0, reqBadge: 0, version: '' };
@@ -37,9 +38,9 @@ const brand = () => h('span', { class: 'wordmark' }, 'VITON', h('sup', null, '13
 const upgrade = (reason) => plansSheet({ me: S.me, reason });
 
 // ── shell ───────────────────────────────────────────────────────────────────
-const WORLD_TABS = [['home', 'Главная'], ['vit', 'VIT'], ['brain', 'Мозг'], ['messages', 'Сообщения'], ['music', 'Музыка'], ['browser', 'Meridian']];
+const WORLD_TABS = [['home', 'Главная'], ['vit', 'VIT'], ['brain', 'Мозг'], ['messages', 'Сообщения'], ['music', 'VIT Music'], ['browser', 'Meridian']];
 // every world, as round icons in the «Все миры» grid (visionOS home); the bar keeps the six used most
-const ALL_WORLDS = [['vit', 'VIT', '#5e5ce6', '#bf5af2'], ['brain', 'Мозг', '#3a2a8f', '#64d2ff'], ['messages', 'Сообщения', '#30d158', '#0a84ff'], ['meet', 'Встречи', '#30d158', '#0a84ff'], ['cinema', 'Кинотеатр', '#e9c27a', '#5e5ce6'], ['music', 'Музыка', '#ff375f', '#ff9f0a'], ['browser', 'Meridian', '#0a84ff', '#64d2ff'],
+const ALL_WORLDS = [['vit', 'VIT', '#5e5ce6', '#bf5af2'], ['brain', 'Мозг', '#3a2a8f', '#64d2ff'], ['messages', 'Сообщения', '#30d158', '#0a84ff'], ['meet', 'Встречи', '#30d158', '#0a84ff'], ['cinema', 'Кинотеатр', '#e9c27a', '#5e5ce6'], ['music', 'VIT Music', '#ff375f', '#ff9f0a'], ['browser', 'Meridian', '#0a84ff', '#64d2ff'],
   ['budget', 'Бюджет', '#34c759', '#a2e635'], ['apps', 'Приложения', '#636366', '#0a84ff'], ['journal', 'VJOURNAL', '#a2845e', '#e8d5b0'], ['store', 'Store', '#ff9f0a', '#ff375f'], ['medicine', 'Медицина', '#ff453a', '#ff8a80'], ['hub', 'Hub', '#5856d6', '#5ac8fa'], ['settings', 'Настройки', '#48484a', '#8e8e93']];
 const VIT_TABS = [['vit', 'Диалог'], ['memory', 'Память'], ['works', 'Работы'], ['requests', 'Заявки'], ['agents', 'Агенты']];
 const WORLDS = new Set(['brain', 'messages', 'meet', 'cinema', 'music', 'budget', 'browser', 'apps', 'journal', 'store', 'medicine', 'hub']), VIT_GROUP = new Set(VIT_TABS.map(([id]) => id));
@@ -366,6 +367,35 @@ function viewAgents() {
     h('div', { class: 'agents' }, S.agents.map((a) => h('div', { class: 'agent glass' }, h('span', { class: 'glyph', style: `background:${a.color}` }, a.name[0]), h('b', null, a.name), h('p', null, a.about), h('small', null, count[a.id] ? `${count[a.id]} ${plural(count[a.id])} выполнено` : 'Ждёт задачу'))))))) };
 }
 
+// ── the owner's control panel ───────────────────────────────────────────────
+/** Settings → Управление: who has the subscription, what each level may use, the guest trial, who is on this computer. Only the owner sees it. */
+function adminPanel(body, d) {
+  const LEVELS = [['guest', 'Гость'], ['id', 'VITON ID'], ['vit', 'VIT']], NAME = { guest: 'Гость', id: 'VITON ID', vit: 'VIT' };
+  const redo = (nd) => adminPanel(body, nd);
+  const email = h('input', { class: 'field sm', type: 'email', placeholder: 'Почта VITON ID', 'aria-label': 'Почта VITON ID', style: 'flex:1;min-width:200px' });
+  let days = '30';
+  const grant = async (e, n) => { try { redo(await api('/api/admin/grants', { body: { email: e, days: n } })); toast(n === 0 ? 'Подписка снята' : 'Подписка выдана'); } catch (ex) { toast(ex.message); } };
+  const trial = h('input', { class: 'field sm', type: 'number', min: 0, max: 100, value: d.guestTrial, 'aria-label': 'Пробных ответов гостю', style: 'width:90px' });
+  body.replaceChildren(
+    h('div', { class: 'card soft' }, h('span', { class: 'cap' }, 'Владелец'), h('h3', null, 'Панель управления VITON13'),
+      h('p', { class: 'hint' }, `Вы владелец (${d.owners.join(', ')}): вам открыто всё, бесплатно. Здесь — подписки, доступ по уровням и пробный режим. Действует для приложения на этом компьютере; общие подписки для всех устройств появятся, когда оплата переедет на viton13.com.`)),
+    h('div', { class: 'card' }, h('h3', null, 'Подписка VIT'), h('p', { class: 'hint' }, 'Выдайте подписку по почте VITON ID — человек получит её при следующем входе.'),
+      h('div', { class: 'row', style: 'flex-wrap:wrap;margin-top:12px;gap:8px' }, email, seg([['30', '30 дней'], ['365', 'Год'], ['-1', 'Навсегда']], days, (v) => { days = v; }),
+        h('button', { class: 'btn sm', onclick: () => grant(email.value, Number(days)) }, 'Выдать')),
+      h('div', { class: 'adm-list' }, d.grants.length ? d.grants.map((g) => h('div', { class: 'adm-row' }, h('div', { class: 'grow' }, h('b', null, g.email), h('small', null, g.until ? `до ${new Date(g.until).toLocaleDateString('ru-RU')}` : 'бессрочно')),
+        h('button', { class: 'btn sm ghost', onclick: () => grant(g.email, 0) }, 'Снять'))) : h('p', { class: 'hint' }, 'Пока никому не выдано.'))),
+    h('div', { class: 'card' }, h('h3', null, 'Доступ по уровням'), h('p', { class: 'hint' }, 'С какого уровня открывается каждая функция. Всё, что тратит гигабайты и платные модели, разумно держать на VIT.'),
+      h('div', { class: 'adm-list' }, d.features.map((f) => h('div', { class: 'adm-row' }, h('div', { class: 'grow' }, h('b', null, f.name), h('small', null, f.note || (f.needs === f.def ? 'как задумано' : `изменено · было «${NAME[f.def]}»`))),
+        seg(LEVELS, f.needs, async (v) => { try { redo(await api('/api/admin/access', { body: { feature: f.id, plan: v } })); } catch (ex) { toast(ex.message); } }))))),
+    h('div', { class: 'card' }, h('div', { class: 'row', style: 'flex-wrap:wrap' }, h('div', { class: 'grow' }, h('h3', null, 'Пробный режим'), h('p', { class: 'hint' }, 'Сколько раз VIT ответит гостю, прежде чем попросить VITON ID и подписку.')),
+      trial, h('button', { class: 'btn sm ghost', onclick: async () => { try { redo(await api('/api/admin/trial', { body: { n: Number(trial.value) } })); toast('Сохранено'); } catch (ex) { toast(ex.message); } } }, 'Сохранить'))),
+    h('div', { class: 'card' }, h('h3', null, 'Люди на этом компьютере'), h('div', { class: 'adm-list' }, d.people.map((u) => h('div', { class: 'adm-row' },
+      h('span', { class: 'ava', style: 'width:34px;height:34px;font-size:13px' }, (u.name || '?')[0].toUpperCase()),
+      h('div', { class: 'grow' }, h('b', null, u.name || 'Без имени'), h('small', null, `${u.email || 'гость'} · ${u.messages} сообщ. · ${u.nodes} мыслей`)),
+      h('span', { class: 'tag' }, NAME[u.plan] || u.plan),
+      u.email && u.plan !== 'vit' ? h('button', { class: 'btn sm ghost', onclick: () => grant(u.email, 30) }, 'Дать VIT') : null)))));
+}
+
 // ── settings ────────────────────────────────────────────────────────────────
 const FAQ = [
   ['Чем VIT отличается от чат-бота?', 'Чат-бот отвечает. VIT доводит до результата: сам решает, ответить ли сразу, найти данные в интернете, провести цель через команду агентов или передать задачу человеку.'],
@@ -380,7 +410,7 @@ const FAQ = [
 function viewSettings(arg) {
   const body = h('div', { class: 'stack' }); let tab = arg?.tab || 'profile';
   const root = h('div', { class: 'view' }, h('div', { class: 'page scroll' }, h('div', { class: 'page-in', style: 'max-width:860px' }, h('h1', null, 'Настройки'), h('p', { class: 'sub-line' }, 'Профиль, модели, поведение, данные, открытые проекты и помощь.'),
-    h('div', { class: 'set-tabs' }, seg([['profile', 'Профиль'], ['models', 'Модели'], ['behave', 'Поведение'], ['data', 'Данные'], ['projects', 'Проекты'], ['help', 'Помощь']], tab, (t) => { tab = t; paint(); })), body)));
+    h('div', { class: 'set-tabs' }, seg([['profile', 'Профиль'], ['models', 'Модели'], ['behave', 'Поведение'], ['data', 'Данные'], ['projects', 'Проекты'], ['help', 'Помощь'], ...(S.sub?.owner ? [['admin', 'Управление']] : [])], tab, (t) => { tab = t; paint(); })), body)));
   const WHY = { eco: 'Всё делает локальная модель — бесплатно. Облако подключается, только если она не отвечает.', balanced: 'Разговор — на локальной модели, сложная работа агентов — в облаке.', cloud: 'Всё идёт в облако; локальная модель — запасная.' };
 
   function ladder(box, d) {
@@ -426,6 +456,7 @@ function viewSettings(arg) {
       if (tab === 'profile') body.replaceChildren(
         h('div', { class: 'card' }, h('div', { class: 'row' }, h('span', { class: 'ava', style: 'width:46px;height:46px;font-size:17px' }, S.me.name[0].toUpperCase()), h('div', { class: 'grow' }, h('h3', null, S.me.name), h('p', { class: 'hint' }, S.me.kind === 'viton' ? `VITON ID · ${S.me.email}` : 'Гостевой режим — без аккаунта')),
           h('button', { class: 'btn sm ghost', onclick: async () => { await api('/api/auth/logout', { method: 'POST', body: {} }); location.hash = ''; location.reload(); } }, 'Выйти'))),
+        phoneCard({ h, api, toast, toggle }) || '',
         h('div', { class: 'card plan-card' }, h('div', { class: 'row', style: 'flex-wrap:wrap' }, h('div', { class: 'grow' }, h('span', { class: 'cap' }, 'Доступ'), h('h3', null, S.sub?.name || 'Гость'),
           h('p', { class: 'hint' }, S.sub?.plan === 'vit' ? (S.sub.until ? `Подписка VIT до ${new Date(S.sub.until).toLocaleDateString('ru-RU')}` : 'Подписка VIT активна') : S.sub?.line || '')),
           h('button', { class: 'btn sm' + (S.sub?.plan === 'vit' ? ' ghost' : ''), onclick: () => upgrade() }, S.sub?.plan === 'vit' ? 'Что входит' : S.sub?.plan === 'id' ? 'Подключить VIT' : 'Войти с VITON ID'))),
@@ -448,6 +479,7 @@ function viewSettings(arg) {
         body.replaceChildren(h('div', { class: 'card soft' }, h('h3', null, 'Открытые проекты внутри VITON13'), h('p', { class: 'hint' }, `Приложение стоит на открытом коде с GitHub: ${d.items.length} проектов, сейчас работают ${on}. Здесь видно, что делает каждый и жив ли он на этом компьютере.`)),
           ...groups.map((g) => h('div', { class: 'card' }, h('h3', { style: 'margin-bottom:4px' }, g), d.items.filter((p) => p.group === g).map((p) => h('div', { class: 'proj' }, h('span', { class: 'dot ' + (p.state === 'on' ? 'ok' : p.state === 'idle' ? 'none' : 'limit') }),
             h('div', { class: 'grow' }, h('div', { class: 'name' }, h('a', { href: p.url, target: '_blank', rel: 'noopener noreferrer' }, p.name), h('span', { class: 'cap' }, p.license)), h('p', null, p.role), h('small', { class: 'cap' }, p.note))))))); }
+      else if (tab === 'admin') adminPanel(body, await api('/api/admin'));
       else body.replaceChildren(
         h('div', { class: 'card faq' }, h('h3', { style: 'margin-bottom:6px' }, 'Вопросы и ответы'), FAQ.map(([q, a]) => h('details', null, h('summary', null, q), h('p', null, a)))),
         h('div', { class: 'card' }, h('h3', { style: 'margin-bottom:12px' }, 'Клавиши'), h('div', { class: 'keys' }, h('kbd', null, 'Enter'), 'Отправить сообщение', h('kbd', null, 'Shift + Enter'), 'Новая строка', h('kbd', null, '← →'), 'Листать миры на ленте и статьи на полке', h('kbd', null, 'Esc'), 'Закрыть окно или пропустить приветствие')),

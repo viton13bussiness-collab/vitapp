@@ -3,6 +3,7 @@
 import { db, all, one, run, now } from '../db.mjs';
 import { addNode } from '../memory.mjs';
 import { chat } from '../ladder.mjs';
+import { can } from '../plan.mjs';
 
 db.exec(`CREATE TABLE IF NOT EXISTS budget_profile (user TEXT PRIMARY KEY, currency TEXT DEFAULT 'RUB', balance REAL DEFAULT 0, income REAL DEFAULT 0, since INTEGER, updated INTEGER);
 CREATE TABLE IF NOT EXISTS budget_tx (id INTEGER PRIMARY KEY, user TEXT, kind TEXT, amount REAL, cat TEXT, note TEXT, day TEXT, created INTEGER);
@@ -121,7 +122,7 @@ export async function handle({ user, seg, method, json, fail, body }) {
     }
 
     if (seg[2] === 'advice' && method === 'POST') {
-      if (user.plan !== 'vit') { json(402, { ok: false, code: 'subscribe', message: 'Разбор бюджета делает ассистент VIT — он входит в подписку.' }); return true; }
+      if (!can(user, 'budget.advice')) { json(402, { ok: false, code: 'subscribe', message: 'Разбор бюджета делает ассистент VIT — он входит в подписку.' }); return true; }
       const s = state(user.id);
       if (!s.profile && !s.tx.length) { fail(400, 'Сначала запишите, сколько у вас денег и какой доход'); return true; }
       const r = await chat({ system: COACH, messages: [{ role: 'user', content: summary(s) }], tier: 'fast', maxTokens: 700, temperature: 0.3 });

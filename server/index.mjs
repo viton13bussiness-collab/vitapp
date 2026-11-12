@@ -8,18 +8,25 @@ import { all, one, run, now, getSetting, setSetting } from './db.mjs';
 import { signInLocal, signInViton, signOut, userByToken } from './auth.mjs';
 import { handle, pulse, jobShape } from './agent.mjs';
 import { graph, forget, forgetAll, addNode, CATS } from './memory.mjs';
-import { planOf, subscription, vitBlocked, listGrants, setGrant } from './plan.mjs';
+import { planOf, subscription, vitBlocked, listGrants, setGrant, can, isOwner, FEATURES, needs, setAccess, guestTrial, setGuestTrial, ownerList } from './plan.mjs';
+const adminState = () => ({
+  grants: listGrants(), owners: ownerList(), guestTrial: guestTrial(),
+  features: FEATURES.map((f) => ({ ...f, needs: needs(f.id) })),
+  people: all('SELECT id, kind, name, email, created FROM users ORDER BY created DESC LIMIT 200').map((u) => ({ ...u, kind: u.kind === 'viton' ? 'viton' : 'guest', plan: planOf(u),
+    messages: one('SELECT COUNT(*) AS n FROM msgs m JOIN convs c ON c.id = m.conv WHERE c.user = ?', u.id).n, nodes: one('SELECT COUNT(*) AS n FROM nodes WHERE user = ?', u.id).n })),
+});
 import { status as modelStatus, test as modelTest } from './ladder.mjs';
 import { AGENTS } from './agents.mjs';
 import { listRequests, allRequests, createRequest, updateRequest, onRequest, teamChannel, STATUS } from './team.mjs';
 import { transcribe, voiceStatus } from './voice.mjs';
+import { initLan, setLan, lanState, isLan, lanHostOk, newCode, claim, isDevice, unpair, unpairToken, retoken } from './lan.mjs';
 
 // Worlds of the ecosystem (journal, store, medicine, hub…) plug in as files in server/worlds/*.mjs, each exporting handle(ctx) → true when it answered.
 const worlds = [];
 { const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'worlds');
   for (const f of fs.existsSync(dir) ? fs.readdirSync(dir).filter((n) => n.endsWith('.mjs')).sort() : []) { try { const m = await import(pathToFileURL(path.join(dir, f)).href); if (typeof m.handle === 'function') worlds.push(m.handle); } catch (e) { console.error(`[world ${f}]`, e.message); } } }
 
-const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json', '.md': 'text/markdown; charset=utf-8', '.ico': 'image/x-icon', '.glb': 'model/gltf-binary', '.gltf': 'model/gltf+json', '.bin': 'application/octet-stream', '.wasm': 'application/wasm', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.woff2': 'font/woff2', '.mp4': 'video/mp4', '.txt': 'text/plain; charset=utf-8' };
+const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json', '.md': 'text/markdown; charset=utf-8', '.ico': 'image/x-icon', '.glb': 'model/gltf-binary', '.gltf': 'model/gltf+json', '.bin': 'application/octet-stream', '.wasm': 'application/wasm', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.woff2': 'font/woff2', '.mp4': 'video/mp4', '.txt': 'text/plain; charset=utf-8', '.webmanifest': 'application/manifest+json' };
 const LOCAL_HOST = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
 
 const json = (res, code, body) => { res.writeHead(code, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }); res.end(JSON.stringify(body)); };
@@ -55,12 +62,22 @@ onRequest((r) => { for (const f of feeds) if (f.user === r.user || f.team) f.sen
 async function api(req, res, url, user, token) {
   const p = url.pathname, m = req.method, seg = p.split('/').filter(Boolean);            // ['api', …]
   if (p === '/api/health') return json(res, 200, { ok: true, version: VERSION });
+  // iPhone over the home network: a one-time code from the Mac pairs the phone to the same account
+  if (p === '/api/pair/claim' && m === 'POST') { const b = await body(req), d = claim(b.code, req.socket.remoteAddress || '', String(req.headers['user-agent'] || '')); setCookie(res, d.token); return json(res, 200, { ok: true, name: d.name }); }
+  if (req.viaLan && p === '/api/auth/local') return fail(res, 403, 'Гостевой вход — только на самом Mac');
   if (p === '/api/auth/local' && m === 'POST') { const b = await body(req); const s = signInLocal(b.name); setCookie(res, s.token); return json(res, 200, { ok: true, me: pubUser(s.user) }); }
-  if (p === '/api/auth/viton' && m === 'POST') { const b = await body(req); if (!b.email || !b.password) return fail(res, 400, 'Введите почту и пароль'); const s = await signInViton(b.email, b.password); setCookie(res, s.token); return json(res, 200, { ok: true, me: pubUser(s.user), moved: s.moved }); }
-  if (p === '/api/auth/logout' && m === 'POST') { signOut(token); setCookie(res, ''); return json(res, 200, { ok: true }); }
+  if (p === '/api/auth/viton' && m === 'POST') { const b = await body(req); if (!b.email || !b.password) return fail(res, 400, 'Введите почту и пароль'); const s = await signInViton(b.email, b.password); if (req.viaLan) retoken(token, s.token, s.user.id); setCookie(res, s.token); return json(res, 200, { ok: true, me: pubUser(s.user), moved: s.moved }); }
+  if (p === '/api/auth/logout' && m === 'POST') { if (req.viaLan) unpairToken(token); signOut(token); setCookie(res, ''); return json(res, 200, { ok: true }); }
   if (p === '/api/me') return json(res, 200, { ok: true, me: pubUser(user), version: VERSION });
   if (!user) return fail(res, 401, 'Войдите в VIT');
   user.plan = planOf(user);
+  // the home-network door is managed only on the Mac itself
+  if (seg[1] === 'lan' && req.viaLan) return fail(res, 403, 'Управлять доступом можно только на Mac');
+  if (p === '/api/lan' && m === 'GET') return json(res, 200, { ok: true, ...(await lanState(user)) });
+  if (p === '/api/lan' && m === 'POST') { const b = await body(req); await setLan(!!b.on); return json(res, 200, { ok: true, ...(await lanState(user)) }); }
+  if (p === '/api/lan/code' && m === 'POST') return json(res, 200, { ok: true, ...newCode(user) });
+  if (seg[1] === 'lan' && seg[2] === 'devices' && seg[3] && m === 'DELETE') return json(res, 200, { ok: unpair(user.id, seg[3]), ...(await lanState(user)) });
+  if (req.viaLan && (seg[1] === 'team' || seg[1] === 'admin' || (seg[1] === 'models' && m !== 'GET') || (seg[1] === 'data' && m === 'DELETE') || (seg[1] === 'apps' && m !== 'GET'))) return fail(res, 403, 'Это делается только на Mac');
 
   if (p === '/api/state') { const conv = currentConv(user); return json(res, 200, { ok: true, me: pubUser(user), conv: conv.id, messages: messages(conv.id), cats: CATS, agents: AGENTS.map(({ id, name, color, about }) => ({ id, name, color, about })), voice: voiceStatus(), speak: getSetting('speak', 'voice'), theme: getSetting('theme:' + user.id, ''), sub: subscription(user), version: VERSION }); }
   if (p === '/api/plan') return json(res, 200, { ok: true, sub: subscription(user) });
@@ -76,7 +93,7 @@ async function api(req, res, url, user, token) {
     catch (e) { if (!ac.signal.aborted) send({ type: 'error', message: e.code ? e.message : 'Что-то пошло не так. Попробуйте ещё раз.' }); if (!e.code && !ac.signal.aborted) console.error('[chat]', e); }
     send({ type: 'done' }); return res.end();
   }
-  if (p === '/api/pulse') { if (user.plan !== 'vit') return json(res, 200, { ok: true, message: null }); try { return json(res, 200, { ok: true, message: await pulse(user, currentConv(user).id) }); } catch { return json(res, 200, { ok: true, message: null }); } }
+  if (p === '/api/pulse') { if (!can(user, 'vit')) return json(res, 200, { ok: true, message: null }); try { return json(res, 200, { ok: true, message: await pulse(user, currentConv(user).id) }); } catch { return json(res, 200, { ok: true, message: null }); } }
   if (p === '/api/events') { const send = sse(req, res), f = { user: user.id, team: url.searchParams.get('team') === '1', send }; feeds.add(f); send({ type: 'hello' }); const beat = setInterval(() => res.write(': ping\n\n'), 25000); return req.on('close', () => { clearInterval(beat); feeds.delete(f); }); }
 
   if (p === '/api/memory' && m === 'GET') return json(res, 200, { ok: true, ...graph(user.id) });
@@ -87,6 +104,12 @@ async function api(req, res, url, user, token) {
   if (p === '/api/jobs') return json(res, 200, { ok: true, items: all('SELECT * FROM jobs WHERE user = ? ORDER BY id DESC LIMIT 60', user.id).map(jobShape) });
   if (p === '/api/requests' && m === 'GET') return json(res, 200, { ok: true, items: listRequests(user.id), channel: teamChannel() });
   if (p === '/api/requests' && m === 'POST') { const b = await body(req); if (!String(b.title || '').trim()) return fail(res, 400, 'Нет названия заявки'); return json(res, 200, { ok: true, request: await createRequest(user, b.title, b.detail), channel: teamChannel() }); }
+  // the owner's control panel (Settings → Управление): subscriptions, what each level may use, the guest trial, who is on this computer
+  if (seg[1] === 'admin' && !isOwner(user)) return fail(res, 403, 'Панель управления — только для владельца VITON13');
+  if (p === '/api/admin' && m === 'GET') return json(res, 200, { ok: true, ...adminState() });
+  if (p === '/api/admin/access' && m === 'POST') { const b = await body(req); return setAccess(b.feature, b.plan) ? json(res, 200, { ok: true, ...adminState() }) : fail(res, 400, 'Нет такой функции или уровня'); }
+  if (p === '/api/admin/trial' && m === 'POST') { const b = await body(req); return setGuestTrial(b.n) ? json(res, 200, { ok: true, ...adminState() }) : fail(res, 400, 'От 0 до 100'); }
+  if (p === '/api/admin/grants' && m === 'POST') { const b = await body(req); return setGrant(b.email, Number(b.days)) ? json(res, 200, { ok: true, ...adminState() }) : fail(res, 400, 'Проверьте почту'); }
   if (seg[1] === 'team' && seg[2] === 'grants' && !subscription(user).owner) return fail(res, 403, 'Подписки выдаёт только владелец VITON13 — войдите его VITON ID');
   if (p === '/api/team/grants' && m === 'GET') return json(res, 200, { ok: true, items: listGrants() });
   if (p === '/api/team/grants' && m === 'POST') { const b = await body(req); return setGrant(b.email, Number(b.days)) ? json(res, 200, { ok: true, items: listGrants() }) : fail(res, 400, 'Проверьте почту'); }
@@ -125,12 +148,21 @@ async function api(req, res, url, user, token) {
   return fail(res, 404, 'Нет такого адреса');
 }
 
-export const server = http.createServer(async (req, res) => {
+const handler = async (req, res) => {
   try {
     const url = new URL(req.url, 'http://local');
-    if (HOST === '127.0.0.1' && !LOCAL_HOST.test(req.headers.host || '')) { res.writeHead(403); return res.end(); }                      // DNS rebinding
+    req.viaLan = isLan(req);                                                          // came in over the home network (an iPhone), not from this Mac
+    if (req.viaLan ? !lanHostOk(req) : HOST === '127.0.0.1' && !LOCAL_HOST.test(req.headers.host || '')) { res.writeHead(403); return res.end(); }   // DNS rebinding
     if (req.method !== 'GET' && req.headers.origin && new URL(req.headers.origin).host !== req.headers.host) { res.writeHead(403); return res.end(); }   // cross-site writes
-    const token = cookie(req)[COOKIE] || '', user = userByToken(token);
+    const token = cookie(req)[COOKIE] || '';
+    let user = userByToken(token);
+    if (req.viaLan && !(user && isDevice(token))) {                                   // an unpaired phone sees the pairing page and nothing else
+      user = null;
+      if (url.pathname.startsWith('/api/')) return url.pathname === '/api/pair/claim' || url.pathname === '/api/health' ? await api(req, res, url, null, '') : fail(res, 401, 'Сначала подключите это устройство: QR-код на Mac');
+      if (url.pathname === '/' || url.pathname === '/index.html') { res.writeHead(302, { location: '/pair' + url.search }); return res.end(); }
+    }
+    if (req.viaLan && (url.pathname === '/team' || url.pathname === '/team.html' || url.pathname === '/admin' || url.pathname === '/admin.html')) { res.writeHead(404); return res.end(); }
+    if (url.pathname === '/pair') return serve(res, path.join(WEB, 'pair.html'));
     if (url.pathname.startsWith('/api/')) return await api(req, res, url, user, token);
     if (url.pathname.startsWith('/workspace/')) {                                     // what the agents produced; pages open sandboxed
       const [, , jobDir, name] = url.pathname.split('/'), id = Number(String(jobDir || '').replace('job-', ''));
@@ -145,9 +177,10 @@ export const server = http.createServer(async (req, res) => {
     if (!res.headersSent) fail(res, e.http || (e.user ? 400 : 500), known ? e.message : 'Ошибка сервера'); else res.end();
     if (!known) console.error(e);
   }
-});
+};
+export const server = http.createServer(handler);
 
 export function start(port = PORT) {
-  return new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, HOST, () => { console.log(`VITON13 ${VERSION} · http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${port}`); resolve(port); }); });
+  return new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, HOST, () => { initLan(handler, port).catch((e) => console.error('[lan]', e.message)); console.log(`VITON13 ${VERSION} · http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${port}`); resolve(port); }); });
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) start().catch((e) => { console.error(e.code === 'EADDRINUSE' ? `Порт ${PORT} занят. Задайте другой: VIT_PORT=5314 npm start` : e); process.exit(1); });

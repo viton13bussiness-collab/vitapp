@@ -300,3 +300,29 @@ body.void .top .tabs { background: rgba(20, 20, 24, 0.7); }
 .mini-eq.on i { animation: mini-eq 0.9s ease-in-out infinite; } .mini-eq.on i:nth-child(2) { animation-delay: 0.2s; } .mini-eq.on i:nth-child(3) { animation-delay: 0.4s; }
 @keyframes mini-eq { 50% { height: 12px; } }
 @media (max-width: 860px) { .mini { max-width: 150px; } }
+
+/* the owner's control panel */
+.adm-list { display: grid; gap: 2px; margin-top: 12px; }
+.adm-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 0.5px solid var(--line); flex-wrap: wrap; }
+.adm-row:first-child { border-top: 0; }
+.adm-row b { display: block; font-size: 14.5px; font-weight: 600; } .adm-row small { display: block; font-size: 12.5px; color: var(--mute); margin-top: 1px; }
+.adm-row .grow { flex: 1; min-width: 180px; } .adm-row .seg { margin-left: auto; }
+
+/* ── iPhone и iPad: pairing over the home network ── */
+.lan-card .row { align-items: flex-start; }
+.lan-sw { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--ink2); white-space: nowrap; }
+.lan-body { margin-top: 14px; } .lan-body:empty { display: none; }
+.lan-pair { display: grid; grid-template-columns: 196px minmax(0, 1fr); gap: 22px; align-items: center; } .lan-card { min-width: 0; overflow: hidden; } .lan-card .grow { min-width: 0; }
+.lan-qr { width: 196px; height: 196px; border-radius: 18px; overflow: hidden; background: #fff; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25); }
+.lan-qr svg { display: block; width: 100%; height: 100%; }
+.lan-steps { margin: 0; padding: 0; list-style: none; counter-reset: s; display: grid; gap: 9px; font-size: 14.5px; }
+.lan-steps li { display: flex; gap: 10px; align-items: center; } .lan-steps li::before { counter-increment: s; content: counter(s); flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--soft2); font-size: 12px; font-weight: 600; }
+.lan-codebox { margin: 16px 0 10px; display: grid; gap: 2px; }
+.lan-code { font: 600 24px var(--mono); letter-spacing: 0.14em; }
+.lan-url { font-family: var(--mono); font-size: 12px; margin: 8px 0 0; }
+.lan-devs { margin-top: 18px; display: grid; gap: 8px; } .lan-dev { align-items: center !important; padding: 10px 12px; border-radius: 12px; background: var(--soft); }
+.lan-dev small { display: block; margin: 0; }
+.lan-note { margin-top: 16px; font-size: 12.5px; }
+@media (max-width: 640px) { .lan-pair { grid-template-columns: minmax(0, 1fr); justify-items: center; } .lan-side { width: 100%; } .lan-card .row { flex-wrap: wrap; } .lan-sw { white-space: normal; width: 100%; justify-content: space-between; } }
+/* phone: the spatial home's top row loses the «Профиль» pill (the avatar in the bar does the same) so nothing runs off screen */
+@media (max-width: 520px) { .sp-nav .sp-contact { display: none; } .sp-nav { right: auto; } }

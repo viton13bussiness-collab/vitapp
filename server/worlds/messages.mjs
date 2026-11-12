@@ -14,6 +14,7 @@
 //     non-viton13.com host, e.g. a local mock) is reached directly with a cookie kept in memory, for testing.
 import { createRequire } from 'node:module';
 import { db, one, run, now } from '../db.mjs';
+import { can } from '../plan.mjs';
 
 export const SITE = String(process.env.VIT_SITE_URL || 'https://www.viton13.com').replace(/\/+$/, '');
 const SITE_URL = new URL(SITE);
@@ -143,7 +144,7 @@ const NO_CIRCLES = 'viton13.com ещё не принимает кружки — 
 export async function handle({ req, res: reply, url, user, seg, method, json, fail, body }) {
   if (seg[1] !== 'messages') return false;
   const plan = user.plan || 'guest';
-  if (plan === 'guest') { json(402, { ok: false, code: 'subscribe', message: 'Сообщения доступны с VITON ID' }); return true; }
+  if (!can(user, 'messages')) { json(402, { ok: false, code: 'subscribe', message: 'Сообщения недоступны на вашем уровне — посмотрите «Что входит»' }); return true; }
   const what = seg[2] || '';
 
   if (what === 'status' && method === 'GET') { json(200, { ok: true, ...(await status(user)) }); return true; }
@@ -188,6 +189,7 @@ export async function handle({ req, res: reply, url, user, seg, method, json, fa
     if (method === 'POST' && seg[4] === 'attach') {
       const type = q('type').split(';')[0].trim().toLowerCase();
       if (!MEDIA.test(type)) { fail(415, 'Такой файл не отправить'); return true; }
+      if (type.startsWith('video/') && !can(user, 'circles')) { json(402, { ok: false, code: 'subscribe', message: 'Кружки недоступны на вашем уровне' }); return true; }
       let bytes; try { bytes = await readRaw(req, 4_000_000); } catch (e) { fail(e.http || 400, e.message); return true; }
       if (bytes.length < 16) { fail(400, 'Пустой файл'); return true; }
       const ext = type.split('/')[1].replace('mpeg', 'mp3'), num = (k, max) => { const v = Number(q(k)); return Number.isFinite(v) && v > 0 ? Math.min(max, v) : 0; };
