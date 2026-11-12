@@ -1,7 +1,8 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { consumeRateLimit } from "@/lib/firebase/rate-limit";
 import { validateMutationRequest } from "@/lib/http-security";
-import { liveMembers, roomIsOpen, RTC_MAX_MEMBERS, RTC_MEMBER_STALE_MS } from "@/lib/rtc-rooms.mjs";
+import { liveMembers, roomIsOpen, maxMembers, RTC_MEMBER_STALE_MS } from "@/lib/rtc-rooms.mjs";
+import { isCinema, mayJoinHall } from "@/lib/rtc-cinema.mjs";
 import { error, json, requireCaller } from "../_shared";
 
 export const runtime = "nodejs";
@@ -56,8 +57,11 @@ export async function POST(request, { params }) {
         tx.update(ref, { [`members.${user.id}.seenAt`]: now });
         return { members };
       }
-      // join: a seat for a newcomer; coming back after a reload takes a fresh seat
-      if (!inside && members.length >= RTC_MAX_MEMBERS) return { code: "ROOM_FULL" };
+      // join: a seat for a newcomer; coming back after a reload takes a fresh seat.
+      // In a cinema only the host and people sitting on a seat come into the hall's call.
+      if (isCinema(room) && room.screening?.cancelled) return { code: "ROOM_NOT_FOUND" };
+      if (isCinema(room) && !mayJoinHall(room, user.id)) return { code: "NO_SEAT" };
+      if (!inside && members.length >= maxMembers(room)) return { code: "ROOM_FULL" };
       const update = { [`members.${user.id}`]: { name: user.name || "", vitonId: user.vitonId || "", avatarUrl: user.avatarUrl || "", joinedAt: now, seenAt: now } };
       // members who went quiet are tidied away while we are here
       for (const [id, m] of Object.entries(room.members || {})) {
@@ -70,6 +74,7 @@ export async function POST(request, { params }) {
     if (result.code === "ROOM_NOT_FOUND") return error("ROOM_NOT_FOUND", 404);
     if (result.code === "ROOM_FULL") return error("ROOM_FULL", 409);
     if (result.code === "NOT_A_MEMBER") return error("NOT_A_MEMBER", 403);
+    if (result.code === "NO_SEAT") return error("NO_SEAT", 403);
     return json({ ok: true, me: { id: user.id, name: user.name || "" }, members: result.members });
   } catch {
     return error("RTC_UNAVAILABLE", 503);

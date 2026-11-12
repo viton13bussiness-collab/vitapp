@@ -277,7 +277,7 @@ body.void .top .tabs { background: rgba(20, 20, 24, 0.7); }
 .launch { position: fixed; inset: 0; z-index: 300; display: grid; place-items: center; padding: 24px; background: rgba(0, 0, 0, 0); -webkit-backdrop-filter: blur(0); backdrop-filter: blur(0);
   transition: background 0.32s, backdrop-filter 0.32s, -webkit-backdrop-filter 0.32s; }
 .launch.in { background: rgba(0, 0, 0, 0.32); -webkit-backdrop-filter: blur(26px) saturate(1.3); backdrop-filter: blur(26px) saturate(1.3); }
-.lc-grid { display: grid; grid-template-columns: repeat(7, 104px); gap: 34px 22px; justify-content: center; }
+.lc-grid { display: grid; grid-template-columns: repeat(7, 104px); gap: 30px 22px; justify-content: center; }
 .lc-app { display: grid; justify-items: center; gap: 10px; color: #fff; opacity: 0; transform: scale(0.7) translateY(18px);
   transition: opacity 0.42s var(--ease) calc(var(--i) * 22ms), transform 0.55s var(--spring) calc(var(--i) * 22ms); }
 .launch.in .lc-app { opacity: 1; transform: none; }

@@ -15,6 +15,7 @@ export const WORLDS = [
   { id: 'brain', name: 'Мозг', cap: 'Память', line: 'Ваша память в 3D: мысли, цели и деньги — звёзды, связи — нейросети.' },
   { id: 'messages', name: 'Сообщения', cap: 'Люди', line: 'Соцсеть VITON13: люди и переписка со сквозным шифрованием.' },
   { id: 'meet', name: 'Встречи', cap: 'Видео', line: 'Видеовстречи до шести человек и кино вместе — напрямую между вами.' },
+  { id: 'cinema', name: 'Кинотеатр', cap: 'Кино', line: 'Настоящий зал с билетами и местами: на креслах — живые рамки с камерами зрителей.' },
   { id: 'music', name: 'Музыка', cap: 'Звук', line: 'Радио всего мира, свободная музыка и ваша библиотека.' },
   { id: 'budget', name: 'Бюджет', cap: 'Деньги', line: 'Деньги, траты и цели. С VIT бюджет считает себя сам.' },
   { id: 'browser', name: 'Meridian', cap: 'Браузер', line: 'Встроенный браузер: весь интернет и проекты GitHub, не выходя из системы.' },
@@ -85,7 +86,7 @@ export function drawScene() {
 }
 
 // ── a photograph for each world (VITON13's own imagery), plus the live dust for VIT ──
-const PHOTO = { meet: '/media/meet.jpg', messages: '/media/messages.jpg', music: '/media/music.jpg', apps: '/media/apps.jpg', brain: '/media/brain.jpg', budget: '/media/budget.jpg', browser: '/media/meridian.jpg', vit: '/media/vit.jpg', journal: '/media/journal.jpg', store: '/media/beauty.jpg', hub: '/media/hub.jpg', medicine: '/media/body.webp' };
+const PHOTO = { cinema: '/media/cinema.jpg', meet: '/media/meet.jpg', messages: '/media/messages.jpg', music: '/media/music.jpg', apps: '/media/apps.jpg', brain: '/media/brain.jpg', budget: '/media/budget.jpg', browser: '/media/meridian.jpg', vit: '/media/vit.jpg', journal: '/media/journal.jpg', store: '/media/beauty.jpg', hub: '/media/hub.jpg', medicine: '/media/body.webp' };
 /** A world's picture as an element. opts.live puts the turning dust over VIT's photograph. */
 function picture(id, orbs, opts = {}) {
   const box = h('div', { class: `art art-${id}` }, h('img', { src: PHOTO[id], alt: '', loading: 'lazy', decoding: 'async', draggable: 'false' }));

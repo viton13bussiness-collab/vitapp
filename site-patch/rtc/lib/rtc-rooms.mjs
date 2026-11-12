@@ -11,6 +11,8 @@ import { randomInt } from "node:crypto";
 const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 export const RTC_CODE_LENGTH = 6;
 export const RTC_MAX_MEMBERS = 6;
+/** A meeting holds six; a cinema hall twelve (see lib/rtc-cinema.mjs). */
+export const maxMembers = (room) => (room?.kind === "cinema" ? 12 : RTC_MAX_MEMBERS);
 export const RTC_ROOM_TTL_MS = 12 * 60 * 60 * 1000;
 export const RTC_SIGNAL_TTL_MS = 10 * 60 * 1000;
 /** A member who has not been seen for this long is no longer listed. */

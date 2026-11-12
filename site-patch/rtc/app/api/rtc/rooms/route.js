@@ -10,6 +10,7 @@ import {
   newRoomCode,
   toPublicMember,
 } from "@/lib/rtc-rooms.mjs";
+import { cinemaExpiry, issueTickets, normalizeScreening, publicScreening } from "@/lib/rtc-cinema.mjs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,7 +23,7 @@ const error = (code, status) => json({ ok: false, code }, { status });
  * VITON ID and the code can join until the room expires (12 hours).
  */
 export async function POST(request) {
-  const requestError = validateMutationRequest(request, { maxBytes: 1024 });
+  const requestError = validateMutationRequest(request, { maxBytes: 4096 });
   if (requestError) return error(requestError.code, requestError.status);
   if (!hasFirebaseAdminEnv()) return error("RTC_NOT_CONFIGURED", 503);
 
@@ -44,6 +45,7 @@ export async function POST(request) {
   const db = getFirebaseAdminDb();
   const now = new Date();
   const iso = now.toISOString();
+  if (payload?.kind === "cinema") return createCinema(db, user, payload, now);
   const me = { name: user.name || "", vitonId: user.vitonId || "", avatarUrl: user.avatarUrl || "", joinedAt: iso, seenAt: iso };
 
   // A fresh code; `create` fails if it is taken, so a collision just tries again.
@@ -59,6 +61,33 @@ export async function POST(request) {
         members: { [user.id]: me },
       });
       return json({ ok: true, room: { code, title, hostId: user.id, members: [toPublicMember(user.id, me)] }, me: { id: user.id, name: me.name } }, { status: 201 });
+    } catch (e) {
+      if (e?.code !== 6 && !/already exists/i.test(String(e?.message || ""))) return error("RTC_UNAVAILABLE", 503);
+    }
+  }
+  return error("RTC_UNAVAILABLE", 503);
+}
+
+/**
+ * A screening in the cinema: the host's settings and, if asked, the first
+ * tickets. Nobody is inside yet — people come in by ticket and take a seat.
+ */
+async function createCinema(db, user, payload, now) {
+  const norm = normalizeScreening(payload.screening, now.getTime());
+  if (norm.error) return error(norm.error, 400);
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const code = newRoomCode();
+    const room = {
+      code, kind: "cinema", title: norm.value.title, hostId: user.id, hostName: user.name || "", createdAt: now.toISOString(),
+      expiresAt: cinemaExpiry(norm.value.startsAt, now.getTime()), screening: norm.value,
+      seats: {}, tickets: {}, admitted: {}, admittedIds: [], banned: {}, members: {},
+    };
+    const issued = issueTickets(room, { count: payload.tickets?.count ?? 1, seats: payload.tickets?.seats || [], uses: payload.tickets?.uses || 1 });
+    if (issued.error) return error(issued.error, 400);
+    room.tickets = issued.tickets;
+    try {
+      await db.collection(ROOMS).doc(code).create(room);
+      return json({ ok: true, room: publicScreening(room, user.id) }, { status: 201 });
     } catch (e) {
       if (e?.code !== 6 && !/already exists/i.test(String(e?.message || ""))) return error("RTC_UNAVAILABLE", 503);
     }
