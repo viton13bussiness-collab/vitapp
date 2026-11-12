@@ -87,7 +87,7 @@ export default function view(ctx, arg) {
     win.replaceChildren(h('div', { class: 'cn-home' },
       h('div', { class: 'cn-hero' }, h('span', { class: 'cn-kicker' }, 'VITON13 · Кинотеатр'), h('h1', null, 'Кино вместе — как в зале'),
         h('p', null, 'Создайте сеанс, раздайте билеты и выберите места. В зале на креслах — живые рамки с камерами зрителей, фильм идёт у всех одновременно.'),
-        h('div', { class: 'cn-hero-acts' }, h('button', { class: 'btn lg', onclick: () => editor() }, 'Новый сеанс'),
+        h('div', { class: 'cn-hero-acts' }, h('button', { class: 'btn lg', onclick: () => (plan === 'vit' ? editor() : ctx.upgrade?.('cinema-host')) }, plan === 'vit' ? 'Новый сеанс' : 'Новый сеанс · VIT'),
           h('div', { class: 'cn-redeem' }, ticketIn, h('button', { class: 'btn ghost', onclick: () => redeem(ticketIn.value) }, 'Войти по билету')))),
       lists, h('p', { class: 'cn-fine' }, 'Фильм и камеры идут напрямую между зрителями. Показывайте фильмы, на которые у вас есть права.')));
     refresh = home;

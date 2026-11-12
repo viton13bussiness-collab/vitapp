@@ -82,6 +82,9 @@ export async function handle({ req, res, url, user, seg, method, json, fail, bod
     rows: Number(b.rows) || 0, cols: Number(b.cols) || 0, seating: b.seating === 'assigned' ? 'assigned' : 'open', note: String(b.note || '').slice(0, 200), ...(typeof b.cancelled === 'boolean' ? { cancelled: b.cancelled } : {}) });
   const seats = (list) => (Array.isArray(list) ? list.map(String).filter((s) => SEAT.test(s)).slice(0, 96) : []);
 
+  // hosting a screening (creating it, issuing tickets, changing it) is part of the VIT subscription; any VITON ID may come by ticket
+  const hosting = method !== 'GET' && what === 'screenings' && (!seg[3] || (!seg[4] && method === 'PATCH') || seg[4] === 'tickets' || seg[4] === 'kick');
+  if (hosting && user.plan !== 'vit') { json(402, { ok: false, code: 'subscribe', message: 'Проводить сеансы можно с подпиской VIT. Прийти по билету — с любым VITON ID.' }); return true; }
   if (what === 'mine' && method === 'GET') { await pass('GET', '/api/rtc/cinema/mine'); return true; }
   if (what === 'redeem' && method === 'POST') { const b = await body(); await pass('POST', '/api/rtc/cinema/redeem', { ticket: String(b.ticket || '').slice(0, 20) }); return true; }
   if (what === 'screenings' && !seg[3] && method === 'POST') {
