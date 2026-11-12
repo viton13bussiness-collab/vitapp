@@ -3,6 +3,8 @@
 // The conversations are the same as on viton13.com (server/worlds/messages.mjs is the bridge); nothing here is invented.
 import { styled, reduced } from '/worlds/_ui.js';
 import { emojiPicker, onlyEmoji } from '/worlds/emoji.js';
+import { recordCircle, circlePlayer } from '/worlds/circle.js';
+const CAM = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3.2"/></svg>';
 const SMILE = '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M8.6 13.8a4.2 4.2 0 0 0 6.8 0"/><circle cx="9.4" cy="10" r=".9" fill="currentColor" stroke="none"/><circle cx="14.6" cy="10" r=".9" fill="currentColor" stroke="none"/></svg>';
 
 const POLL_THREAD = 3000, POLL_LIST = 8000, BEAT = 45000, TYPING_EVERY = 4000, TYPING_IDLE = 6000;
@@ -35,7 +37,7 @@ const initials = (name) => String(name || '?').trim().split(/\s+/).slice(0, 2).m
 
 export default function view(ctx) {
   const { h, icon, api, toast, css } = ctx;
-  css('/worlds/messages.css');
+  css('/worlds/messages.css'); css('/worlds/circle.css');
   const plan = ctx.plan || 'guest';
   const win = h('div', { class: 'ms-win' });
   const root = h('div', { class: 'view ms' }, win);
@@ -176,7 +178,8 @@ export default function view(ctx) {
   // ── one conversation ──
   function openThread(id, peer) {
     if (cur?.id === id) { win.classList.add('ms-in'); return; }
-    stopTyping(); reply = null;
+    stopTyping(); reply = null; recorder?.close(); recorder = null;
+    for (const pl of players.values()) pl.querySelector('video')?.pause(); players.clear();
     cur = { id, peer, msgs: [], hasMore: false, peerState: {}, peerReadAt: '', loading: true };
     win.classList.add('ms-in'); paintList(); paintPane(); loadThread();
   }
@@ -222,6 +225,26 @@ export default function view(ctx) {
   const mic = round('mic', 'Надиктовать', () => dictate(), { class: 'ms-round ms-mic' });
   const emo = emojiPicker({ h, onPick: (e) => { input.setRangeText(e, input.selectionStart ?? input.value.length, input.selectionEnd ?? input.value.length, 'end'); input.dispatchEvent(new Event('input', { bubbles: true })); input.focus(); } });
   const emoBtn = h('button', { class: 'ms-round ms-emoji', type: 'button', title: 'Эмодзи', 'aria-label': 'Эмодзи', html: SMILE, onclick: () => emo.toggle() });
+  const camBtn = h('button', { class: 'ms-round ms-cam', type: 'button', title: 'Кружок', 'aria-label': 'Записать кружок', html: CAM, onclick: () => circle() });
+  const players = new Map();                                       // circle players survive repaints, so a playing one is not restarted
+  let recorder = null;                                             // the open recorder: closing it turns the camera off
+  function circle() {
+    if (!cur) return; emo.close();
+    const c = cur;
+    recorder?.close(); recorder = recordCircle({ h, host: pane, onSend: (rec) => sendCircle(c, rec) });
+  }
+  async function sendCircle(c, rec) {
+    const p = new URLSearchParams({ type: rec.type, duration: String(rec.duration), width: String(rec.width), height: String(rec.height) });
+    const r = await fetch(`/api/messages/thread/${c.id}/attach?${p}`, { method: 'POST', headers: { 'content-type': rec.type }, body: rec.blob }).catch(() => null);
+    const up = await r?.json().catch(() => null);
+    if (!r?.ok || !up?.ok) { if (r?.status === 401) signedOut(Object.assign(new Error(up?.message || ''), { status: 401 })); throw new Error(up?.message || 'Нет связи с viton13.com'); }
+    const d = await api(`/api/messages/thread/${c.id}`, { body: { attachmentIds: [up.attachment.id] } }).catch((e) => { throw e; });
+    // the bubble shows the local recording at once; the file from the site takes over on the next visit
+    const local = URL.createObjectURL(rec.blob), msg = { ...d.message, attachments: (d.message.attachments?.length ? d.message.attachments : [up.attachment]).map((a) => ({ ...a, local })) };
+    if (!c.msgs.some((x) => x.id === msg.id)) c.msgs.push(msg); else c.msgs = c.msgs.map((x) => (x.id === msg.id ? msg : x));
+    const t = threads.find((x) => x.id === c.id); if (t) { t.lastSenderId = me.id; t.lastMessageAt = msg.createdAt; t.lastHasAttachments = true; t.updatedAt = msg.createdAt; threads.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt))); paintList(); }
+    if (c === cur) { paintMsgs(); toBottom(); }
+  }
   const replyBox = h('div', { class: 'ms-reply hide' });
   scroller.append(msgsEl, typingEl);
   scroller.addEventListener('scroll', () => { if (cur?.hasMore && !cur.loadingOld && scroller.scrollTop < 60 && cur.msgs.length) { cur.loadingOld = true; loadThread(cur.msgs[0].createdAt).finally(() => { if (cur) cur.loadingOld = false; }); } }, { passive: true });
@@ -231,10 +254,12 @@ export default function view(ctx) {
     pane.replaceChildren(
       h('header', { class: 'ms-head' }, h('button', { class: 'ms-round ms-back', 'aria-label': 'К диалогам', onclick: () => { win.classList.remove('ms-in'); } }, icon('back')),
         avatar(p, 'sm'), h('div', { class: 'ms-who' }, h('b', null, p.name || 'Без имени'), sub),
-        h('div', { class: 'ms-head-acts' }, round('help', 'О человеке', () => personSheet(p)),
+        h('div', { class: 'ms-head-acts' }, round('meet', 'Видеовстреча', async () => {          // a meeting with this person: the code goes into the chat, the meeting opens
+          try { const d = await api('/api/meet/rooms', { body: { title: '' } }); input.value = `Видеовстреча VITON13: код ${d.room.code}`; await send(); ctx.go('meet', { code: d.room.code }); } catch (e) { toast(e.message); } }),
+          round('help', 'О человеке', () => personSheet(p)),
           h('button', { class: 'ms-round', onclick: () => ctx.go('browser', { url: `${site}/ru/cabinet` }), title: 'Открыть на viton13.com в Meridian', 'aria-label': 'Открыть на viton13.com' }, icon('out')))),
       scroller,
-      h('div', { class: 'ms-compose' }, emo.el, replyBox, h('div', { class: 'ms-compose-row' }, h('div', { class: 'ms-field' }, input, emoBtn, mic), sendBtn)));
+      h('div', { class: 'ms-compose' }, emo.el, replyBox, h('div', { class: 'ms-compose-row' }, h('div', { class: 'ms-field' }, input, emoBtn, mic, camBtn), sendBtn)));
     msgsEl.replaceChildren(h('div', { class: 'ms-loading' }, h('i'), h('i'), h('i')));
     sub.textContent = p.vitonId ? 'VITON ID ' + p.vitonId : ''; typingEl.classList.add('hide');
     paintReply(); grow(); if (matchMedia('(min-width: 761px)').matches) input.focus();
@@ -252,14 +277,19 @@ export default function view(ctx) {
     msgsEl.replaceChildren(...out);
   }
   function bubble(m, mine, grouped, read) {
-    const cls = `ms-bubble ${mine ? 'me' : 'them'}${grouped ? ' grouped' : ''}${!m.deleted && !m.replyTo && !m.attachments?.length && onlyEmoji(m.text) ? ' jumbo' : ''}`;
+    const isCircle = !m.deleted && !m.text && (m.attachments || []).length === 1 && m.attachments[0].kind === 'video';
+    const cls = `ms-bubble ${mine ? 'me' : 'them'}${grouped ? ' grouped' : ''}${!m.deleted && !m.replyTo && !m.attachments?.length && onlyEmoji(m.text) ? ' jumbo' : ''}${isCircle ? ' circle' : ''}`;
     if (m.deleted) return h('div', { class: cls + ' gone' }, 'Сообщение удалено');
     const body = [];
     if (m.forwardedFrom) body.push(h('div', { class: 'ms-fwd' }, 'Переслано от ' + m.forwardedFrom));
-    if (m.replyTo) body.push(h('div', { class: 'ms-quote' }, h('b', null, m.replyTo.senderId === me.id ? 'Вы' : cur.peer.name || 'Собеседник'), h('span', null, m.replyTo.preview || 'вложение')));
+    if (m.replyTo) body.push(h('div', { class: 'ms-quote' }, h('b', null, m.replyTo.senderId === me.id ? 'Вы' : cur.peer.name || 'Собеседник'), h('span', null, m.replyTo.preview || (m.replyTo.kind === 'video' ? 'кружок' : 'вложение'))));
     if (m.text) body.push(h('div', { class: 'ms-text' }, m.text));
     else if (m.legacy) body.push(h('div', { class: 'ms-text ms-legacy' }, 'Защищённое сообщение старого формата. Его можно прочитать на сайте, на устройстве, где оно было открыто.'));
-    for (const a of m.attachments || []) body.push(h('div', { class: 'ms-file' }, icon(a.kind === 'image' ? 'frames' : a.kind === 'voice' ? 'mic' : 'works'), h('span', null, a.kind === 'voice' ? 'Голосовое сообщение' : a.name || 'Файл'), h('small', null, 'на сайте')));
+    for (const a of m.attachments || []) if (a.kind === 'video') {
+      const key = `${cur.id}:${a.id}`; let pl = players.get(key);
+      if (!pl) { pl = circlePlayer({ h, src: a.local || `/api/messages/thread/${cur.id}/file/${encodeURIComponent(a.id)}`, duration: a.duration }); players.set(key, pl); }
+      body.push(pl);
+    } else body.push(h('div', { class: 'ms-file' }, icon(a.kind === 'image' ? 'frames' : a.kind === 'voice' ? 'mic' : 'works'), h('span', null, a.kind === 'voice' ? 'Голосовое сообщение' : a.name || 'Файл'), h('small', null, 'на сайте')));
     body.push(h('time', { class: 'ms-time' }, hm(m.createdAt), mine && read ? h('span', { class: 'ms-read', title: 'Прочитано' }, ' · прочитано') : null));
     const acts = h('div', { class: 'ms-acts' },
       h('button', { onclick: () => { reply = m; paintReply(); input.focus(); } }, 'Ответить'),
@@ -269,7 +299,7 @@ export default function view(ctx) {
   }
   function paintReply() {
     replyBox.classList.toggle('hide', !reply);
-    if (reply) replyBox.replaceChildren(h('div', null, h('b', null, 'Ответ ' + (reply.senderId === me.id ? 'себе' : cur.peer.name || '')), h('span', null, (reply.text || 'вложение').slice(0, 120))), h('button', { class: 'ms-x', 'aria-label': 'Не отвечать', onclick: () => { reply = null; paintReply(); } }, '×'));
+    if (reply) replyBox.replaceChildren(h('div', null, h('b', null, 'Ответ ' + (reply.senderId === me.id ? 'себе' : cur.peer.name || '')), h('span', null, (reply.text || (reply.attachments?.[0]?.kind === 'video' ? 'кружок' : 'вложение')).slice(0, 120))), h('button', { class: 'ms-x', 'aria-label': 'Не отвечать', onclick: () => { reply = null; paintReply(); } }, '×'));
   }
   async function remove(m, mine) {
     if (!confirm(mine ? 'Удалить сообщение у обоих?' : 'Скрыть сообщение у себя?')) return;
@@ -334,5 +364,5 @@ export default function view(ctx) {
   window.addEventListener('keydown', onKey);
   function stopAll() { for (const t of timers) { clearInterval(t); clearTimeout(t); } timers.clear(); }
   styled('/worlds/messages.css').then(() => { if (alive) boot(); });
-  return { root, destroy() { alive = false; stopTyping(); stopAll(); clearTimeout(findT); clearTimeout(readT); rec?.stop(); window.removeEventListener('keydown', onKey); } };
+  return { root, destroy() { alive = false; stopTyping(); stopAll(); clearTimeout(findT); clearTimeout(readT); rec?.stop(); recorder?.close(); for (const pl of players.values()) pl.querySelector('video')?.pause(); window.removeEventListener('keydown', onKey); } };
 }

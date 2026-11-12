@@ -1,5 +1,5 @@
 // VIT as a desktop window. The same server runs inside the app; if the app's Node cannot run it, the system Node does.
-const { app, BrowserWindow, shell, session } = require('electron');
+const { app, BrowserWindow, shell, session, desktopCapturer } = require('electron');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 
@@ -26,7 +26,11 @@ async function ensureServer() {
 async function boot() {
   if (process.platform === 'darwin' && !app.isPackaged) app.dock.setIcon(path.join(__dirname, 'icon.png'));        // the globe mark in the Dock while running from source
   await ensureServer();
-  session.defaultSession.setPermissionRequestHandler((_wc, permission, done) => done(permission === 'media'));      // the microphone, nothing else
+  session.defaultSession.setPermissionRequestHandler((_wc, permission, done) => done(permission === 'media'));      // microphone and camera, nothing else
+  // «Встречи»: sharing a screen or a window — macOS shows its own picker; without it the first screen is offered
+  session.defaultSession.setDisplayMediaRequestHandler((_req, done) => {
+    desktopCapturer.getSources({ types: ['screen', 'window'] }).then((s) => done(s[0] ? { video: s[0], audio: 'loopback' } : {})).catch(() => done({}));
+  }, { useSystemPicker: true });
   const win = new BrowserWindow({ width: 1180, height: 800, minWidth: 380, minHeight: 560, title: 'VITON13', backgroundColor: '#0b0a09', icon: path.join(__dirname, 'icon.png'),
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default', trafficLightPosition: { x: 18, y: 18 }, webPreferences: { contextIsolation: true, sandbox: true, webviewTag: true } });
   win.webContents.setWindowOpenHandler(({ url: target }) => { if (target.startsWith(url)) return { action: 'allow' }; if (/^https?:\/\//.test(target)) shell.openExternal(target); return { action: 'deny' }; });

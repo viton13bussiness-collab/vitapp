@@ -13,6 +13,7 @@ plutil -replace CFBundleDisplayName -string "VITON13" "$PL"
 plutil -replace CFBundleIdentifier -string "com.viton13.app" "$PL"
 plutil -replace CFBundleShortVersionString -string "$(node -p "require('$ROOT/package.json').version")" "$PL"
 plutil -replace NSMicrophoneUsageDescription -string "VIT слушает вас, когда вы нажимаете на микрофон." "$PL"
+plutil -replace NSCameraUsageDescription -string "VITON13 включает камеру, когда вы записываете кружок или выходите на встречу." "$PL"
 cp "$ROOT/electron/icon.icns" "$APP/Contents/Resources/electron.icns"
 # the app is a thin shell: it runs the code and keeps the data of this folder, so an update is just `git pull`
 mkdir -p "$APP/Contents/Resources/app"

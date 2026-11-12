@@ -1,0 +1,50 @@
+/* Кружки: the recorder over the conversation and the round player in it. Dark glass, one thin ring, no decoration. */
+.ms-pane { position: relative; }
+.ms-cam svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+
+/* recorder */
+.cr { position: absolute; inset: 0; z-index: 8; display: grid; place-items: center; background: rgba(0, 0, 0, 0); -webkit-backdrop-filter: blur(0); backdrop-filter: blur(0);
+  transition: background 0.26s var(--ease), backdrop-filter 0.26s, -webkit-backdrop-filter 0.26s; }
+.cr.in { background: rgba(0, 0, 0, 0.42); -webkit-backdrop-filter: blur(22px) saturate(1.2); backdrop-filter: blur(22px) saturate(1.2); }
+.cr-in { display: grid; justify-items: center; gap: 14px; opacity: 0; transform: scale(0.92); transition: opacity 0.26s var(--ease), transform 0.4s var(--spring); }
+.cr.in .cr-in { opacity: 1; transform: none; }
+.cr-stage { position: relative; width: min(300px, 62vmin); aspect-ratio: 1; }
+.cr-view { position: absolute; inset: 8px; width: calc(100% - 16px); height: calc(100% - 16px); border-radius: 50%; object-fit: cover; background: #0b0b0d; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45); }
+.cr-view.hide { display: none; }
+.cr-ring { position: absolute; inset: 0; pointer-events: none; }
+.cr-svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.cr-svg circle { fill: none; stroke-width: 1.6; }
+.cr-svg .cr-track { stroke: rgba(255, 255, 255, 0.14); }
+.cr-svg .cr-run { stroke: #fff; stroke-linecap: round; transition: stroke-dashoffset 0.12s linear; }
+.cr.live .cr-svg .cr-run { stroke: #ff453a; }
+.cr-time { font: 500 14px/1 var(--font); font-variant-numeric: tabular-nums; color: rgba(255, 255, 255, 0.85); letter-spacing: 0.02em; }
+.cr.live .cr-time::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #ff453a; margin-right: 8px; vertical-align: 1px; animation: cr-blink 1.1s ease-in-out infinite; }
+@keyframes cr-blink { 50% { opacity: 0.25; } }
+.cr-note { min-height: 18px; font-size: 13.5px; color: rgba(255, 255, 255, 0.7); text-align: center; max-width: 300px; }
+.cr-acts { display: flex; gap: 14px; align-items: center; }
+.cr-btn { width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; color: #fff; background: rgba(255, 255, 255, 0.12); box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.18);
+  transition: transform 0.25s var(--spring), background 0.2s; }
+.cr-btn svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.cr-btn:hover { background: rgba(255, 255, 255, 0.2); } .cr-btn:active { transform: scale(0.92); }
+.cr-btn.stop { width: 58px; height: 58px; background: #ff453a; box-shadow: 0 0 0 4px rgba(255, 69, 58, 0.25); }
+.cr-btn.send { width: 58px; height: 58px; background: #f5f5f7; color: #000; }
+.cr-btn:disabled { opacity: 0.5; }
+.cr.busy .cr-btn.send { animation: cr-blink 1s ease-in-out infinite; }
+
+/* player */
+.ms-bubble.circle { background: none !important; box-shadow: none !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; padding: 0; overflow: visible; }
+.ms-bubble.circle .ms-time { position: absolute; right: 10%; bottom: 9%; padding: 2px 7px; border-radius: 999px; background: rgba(0, 0, 0, 0.45); color: #fff; font-size: 11px; line-height: 1.5; margin: 0; }
+.cp { position: relative; display: block; width: 220px; height: 220px; padding: 0; border-radius: 50%; cursor: pointer; transition: width 0.35s var(--spring), height 0.35s var(--spring); }
+.cp.loud { width: 280px; height: 280px; }
+.cp-video { position: absolute; inset: 5px; width: calc(100% - 10px); height: calc(100% - 10px); border-radius: 50%; object-fit: cover; background: #0b0b0d; box-shadow: 0 14px 34px rgba(0, 0, 0, 0.3); }
+.cp-ring { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity 0.2s; }
+.cp.loud .cp-ring { opacity: 1; }
+.cp-badge { position: absolute; left: 12%; bottom: 9%; padding: 2px 8px; border-radius: 999px; background: rgba(0, 0, 0, 0.45); color: #fff; font: 500 11.5px/1.5 var(--font); font-variant-numeric: tabular-nums; }
+.cp-sound { position: absolute; left: calc(12% + 46px); bottom: 9%; width: 22px; height: 19px; display: grid; place-items: center; border-radius: 999px; background: rgba(0, 0, 0, 0.45); color: #fff; }
+.cp-sound svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.cp.loud .cp-sound { display: none; }
+.cp.paused .cp-video { filter: brightness(0.7); }
+.cp:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ms-bubble.circle.pending .cp { opacity: 0.6; }
+@media (max-width: 760px) { .cp { width: 190px; height: 190px; } .cp.loud { width: 240px; height: 240px; } }
+@media (prefers-reduced-motion: reduce) { .cr, .cr-in, .cp { transition-duration: 0.01s; } .cr.live .cr-time::before { animation: none; } }

@@ -29,6 +29,7 @@ export const ICON = {
   music: '<path d="M9 17.5V6.2l10-2.2v11.3"/><circle cx="6.8" cy="17.5" r="2.3"/><circle cx="16.8" cy="15.3" r="2.3"/>',
   apps: '<path d="M12 3.8l7.5 4.2v8L12 20.2 4.5 16V8z"/><path d="M4.8 8.2L12 12.3l7.2-4.1M12 12.3v7.6"/>',
   grid: '<circle cx="6.5" cy="6.5" r="2"/><circle cx="12" cy="6.5" r="2"/><circle cx="17.5" cy="6.5" r="2"/><circle cx="6.5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="17.5" cy="12" r="2"/><circle cx="6.5" cy="17.5" r="2"/><circle cx="12" cy="17.5" r="2"/><circle cx="17.5" cy="17.5" r="2"/>',
+  meet: '<rect x="3" y="6" width="13" height="12" rx="3"/><path d="M16 10.5l5-3v9l-5-3"/>',
   hub: '<rect x="4.500" y="4.500" width="6" height="6" rx="1.800"/><rect x="13.500" y="4.500" width="6" height="6" rx="1.800"/><rect x="4.500" y="13.500" width="6" height="6" rx="1.800"/><rect x="13.500" y="13.500" width="6" height="6" rx="1.800"/>',
   frames: '<rect x="3.500" y="5" width="11.500" height="14" rx="2.500"/><path d="M18 7.500h1a1.500 1.500 0 011.500 1.500v6a1.500 1.500 0 01-1.500 1.500h-1"/>',
   help: '<circle cx="12" cy="12" r="8.500"/><path d="M9.700 9.700a2.400 2.400 0 114 1.800c-.900.700-1.700 1.200-1.700 2.300M12 16.700v.2"/>',
