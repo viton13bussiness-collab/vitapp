@@ -2,6 +2,8 @@
 // left, the conversation on the right, a composer with a microphone and a green «Отправить».
 // The conversations are the same as on viton13.com (server/worlds/messages.mjs is the bridge); nothing here is invented.
 import { styled, reduced } from '/worlds/_ui.js';
+import { emojiPicker, onlyEmoji } from '/worlds/emoji.js';
+const SMILE = '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M8.6 13.8a4.2 4.2 0 0 0 6.8 0"/><circle cx="9.4" cy="10" r=".9" fill="currentColor" stroke="none"/><circle cx="14.6" cy="10" r=".9" fill="currentColor" stroke="none"/></svg>';
 
 const POLL_THREAD = 3000, POLL_LIST = 8000, BEAT = 45000, TYPING_EVERY = 4000, TYPING_IDLE = 6000;
 const MONTHS = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
@@ -218,6 +220,8 @@ export default function view(ctx) {
   const input = h('textarea', { class: 'ms-input', rows: 1, placeholder: 'Сообщение', maxlength: 2000, 'aria-label': 'Сообщение' });
   const sendBtn = h('button', { class: 'ms-send', onclick: () => send() }, 'Отправить');
   const mic = round('mic', 'Надиктовать', () => dictate(), { class: 'ms-round ms-mic' });
+  const emo = emojiPicker({ h, onPick: (e) => { input.setRangeText(e, input.selectionStart ?? input.value.length, input.selectionEnd ?? input.value.length, 'end'); input.dispatchEvent(new Event('input', { bubbles: true })); input.focus(); } });
+  const emoBtn = h('button', { class: 'ms-round ms-emoji', type: 'button', title: 'Эмодзи', 'aria-label': 'Эмодзи', html: SMILE, onclick: () => emo.toggle() });
   const replyBox = h('div', { class: 'ms-reply hide' });
   scroller.append(msgsEl, typingEl);
   scroller.addEventListener('scroll', () => { if (cur?.hasMore && !cur.loadingOld && scroller.scrollTop < 60 && cur.msgs.length) { cur.loadingOld = true; loadThread(cur.msgs[0].createdAt).finally(() => { if (cur) cur.loadingOld = false; }); } }, { passive: true });
@@ -230,7 +234,7 @@ export default function view(ctx) {
         h('div', { class: 'ms-head-acts' }, round('help', 'О человеке', () => personSheet(p)),
           h('button', { class: 'ms-round', onclick: () => ctx.go('browser', { url: `${site}/ru/cabinet` }), title: 'Открыть на viton13.com в Meridian', 'aria-label': 'Открыть на viton13.com' }, icon('out')))),
       scroller,
-      h('div', { class: 'ms-compose' }, replyBox, h('div', { class: 'ms-compose-row' }, h('div', { class: 'ms-field' }, input, mic), sendBtn)));
+      h('div', { class: 'ms-compose' }, emo.el, replyBox, h('div', { class: 'ms-compose-row' }, h('div', { class: 'ms-field' }, input, emoBtn, mic), sendBtn)));
     msgsEl.replaceChildren(h('div', { class: 'ms-loading' }, h('i'), h('i'), h('i')));
     sub.textContent = p.vitonId ? 'VITON ID ' + p.vitonId : ''; typingEl.classList.add('hide');
     paintReply(); grow(); if (matchMedia('(min-width: 761px)').matches) input.focus();
@@ -248,7 +252,7 @@ export default function view(ctx) {
     msgsEl.replaceChildren(...out);
   }
   function bubble(m, mine, grouped, read) {
-    const cls = `ms-bubble ${mine ? 'me' : 'them'}${grouped ? ' grouped' : ''}`;
+    const cls = `ms-bubble ${mine ? 'me' : 'them'}${grouped ? ' grouped' : ''}${!m.deleted && !m.replyTo && !m.attachments?.length && onlyEmoji(m.text) ? ' jumbo' : ''}`;
     if (m.deleted) return h('div', { class: cls + ' gone' }, 'Сообщение удалено');
     const body = [];
     if (m.forwardedFrom) body.push(h('div', { class: 'ms-fwd' }, 'Переслано от ' + m.forwardedFrom));
@@ -276,7 +280,7 @@ export default function view(ctx) {
 
   async function send() {
     const c = cur, text = input.value.trim(); if (!c || !text || sendBtn.disabled) return;
-    sendBtn.disabled = true; stopTyping();
+    sendBtn.disabled = true; stopTyping(); emo.close();
     const temp = { id: 'tmp' + Date.now(), senderId: me.id, text, createdAt: new Date().toISOString(), attachments: [], replyTo: reply ? { senderId: reply.senderId, preview: (reply.text || '').slice(0, 140) } : null, pending: true };
     const replyToId = reply?.id; reply = null; paintReply(); input.value = ''; grow();
     c.msgs.push(temp); paintMsgs(); toBottom(); msgsEl.querySelector(`[data-id="${temp.id}"]`)?.classList.add('pending');

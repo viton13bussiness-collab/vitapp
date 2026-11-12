@@ -1,0 +1,8 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><title>VITON13 · иконки миров</title></head>
+<body style="margin:0;background:#2a2a30;display:flex;flex-wrap:wrap;gap:36px;padding:44px;font:600 15px -apple-system,sans-serif;color:#fff">
+<script type="module">
+// Every world icon at a large size, for checking the drawing: /worlds/_icons.html
+import { WORLD_ICONS } from '/world-icons.js';
+for (const [k, v] of Object.entries(WORLD_ICONS)) { const d = document.createElement('div'); d.style.cssText = 'width:150px;text-align:center'; d.innerHTML = `<div style="width:150px;height:150px;filter:drop-shadow(0 18px 26px rgba(0,0,0,.45))">${v.replace('<svg ', '<svg width="150" height="150" ')}</div><p>${k}</p>`; document.body.append(d); }
+</script></body></html>

@@ -281,15 +281,13 @@ body.void .top .tabs { background: rgba(20, 20, 24, 0.7); }
 .lc-app { display: grid; justify-items: center; gap: 10px; color: #fff; opacity: 0; transform: scale(0.7) translateY(18px);
   transition: opacity 0.42s var(--ease) calc(var(--i) * 22ms), transform 0.55s var(--spring) calc(var(--i) * 22ms); }
 .launch.in .lc-app { opacity: 1; transform: none; }
-.lc-ic { width: 92px; height: 92px; border-radius: 50%; display: grid; place-items: center; color: #fff;
-  background: radial-gradient(120% 120% at 30% 20%, var(--b), var(--a) 70%); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), inset 0 -10px 24px rgba(0, 0, 0, 0.18), 0 18px 40px rgba(0, 0, 0, 0.35);
-  transition: transform 0.35s var(--spring), box-shadow 0.3s; }
-.lc-ic .icon { width: 40px; height: 40px; stroke-width: 1.6; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.25)); }
-.lc-app:hover .lc-ic { transform: scale(1.08); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 0 0 4px rgba(255, 255, 255, 0.18), 0 24px 50px rgba(0, 0, 0, 0.4); }
+.lc-ic { width: 92px; height: 92px; border-radius: 50%; display: block; box-shadow: 0 18px 40px rgba(0, 0, 0, 0.4); transition: transform 0.35s var(--spring), box-shadow 0.3s; }
+.lc-ic .wi, .lc-ic svg { display: block; width: 100%; height: 100%; }
+.lc-app:hover .lc-ic { transform: scale(1.07); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25), 0 24px 50px rgba(0, 0, 0, 0.45); }
 .lc-app:active .lc-ic { transform: scale(0.95); }
-.lc-app.on .lc-ic { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 0 0 3px #fff, 0 18px 40px rgba(0, 0, 0, 0.35); }
-.lc-name { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; text-shadow: 0 1px 8px rgba(0, 0, 0, 0.5); }
-@media (max-width: 860px) { .lc-grid { grid-template-columns: repeat(4, 76px); gap: 24px 14px; } .lc-ic { width: 66px; height: 66px; } .lc-ic .icon { width: 30px; height: 30px; } .lc-name { font-size: 12px; } }
+.lc-app.on .lc-ic { box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85), 0 18px 40px rgba(0, 0, 0, 0.4); }
+.lc-name { font-size: 13.5px; font-weight: 500; color: rgba(255, 255, 255, 0.92); letter-spacing: -0.01em; text-shadow: 0 1px 8px rgba(0, 0, 0, 0.5); }
+@media (max-width: 860px) { .lc-grid { grid-template-columns: repeat(4, 76px); gap: 24px 14px; } .lc-ic { width: 66px; height: 66px; } .lc-name { font-size: 12px; } }
 @media (max-width: 380px) { .lc-grid { grid-template-columns: repeat(3, 80px); } }
 .tab.more .icon { display: block; width: 18px; height: 18px; }
 

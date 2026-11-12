@@ -7,6 +7,7 @@ import Fuse from '/vendor/lib/fuse.basic.min.mjs';
 import { viewHome, themeSheet, initTheme, getTheme } from '/home.js';
 import { runIntro } from '/intro.js';
 import { gate, plansSheet } from '/gate.js';
+import { worldIcon } from '/world-icons.js';
 
 // ── state ───────────────────────────────────────────────────────────────────
 const S = { me: null, sub: null, conv: null, messages: [], cats: [], agents: [], jobs: new Map(), voice: {}, speak: 'voice', view: 'home', busy: false, memBadge: 0, reqBadge: 0, version: '' };
@@ -86,8 +87,8 @@ function launcher() {
   const close = () => { el.classList.remove('in'); setTimeout(() => el.remove(), 320); window.removeEventListener('keydown', key); };
   const key = (e) => { if (e.key === 'Escape') close(); };
   const el = h('div', { class: 'launch', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Все миры', onclick: (e) => { if (e.target === el || e.target.classList.contains('lc-grid')) close(); } },
-    h('div', { class: 'lc-grid' }, ALL_WORLDS.map(([id, name, a, b], i) => h('button', { class: 'lc-app' + (S.view === id ? ' on' : ''), style: `--a:${a};--b:${b};--i:${i}`, onclick: () => { close(); go(id); } },
-      h('span', { class: 'lc-ic' }, icon(id)), h('span', { class: 'lc-name' }, name)))));
+    h('div', { class: 'lc-grid' }, ALL_WORLDS.map(([id, name, a, b], i) => h('button', { class: 'lc-app' + (S.view === id ? ' on' : ''), style: `--i:${i}`, onclick: () => { close(); go(id); } },
+      h('span', { class: 'lc-ic' }, worldIcon(id)), h('span', { class: 'lc-name' }, name)))));
   document.body.append(el); window.addEventListener('keydown', key);
   requestAnimationFrame(() => el.classList.add('in'));
 }
