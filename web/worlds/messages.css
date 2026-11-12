@@ -1,0 +1,145 @@
+/* Messages — one frosted window floating in the room, like visionOS: conversations on the left, the talk on the right. */
+.ms { --ms-side: rgba(28, 28, 30, 0.34); --ms-pane: rgba(120, 120, 128, 0.16); --ms-them: rgba(30, 30, 32, 0.52); --ms-me: rgba(255, 255, 255, 0.22);
+  --ms-field: rgba(0, 0, 0, 0.26); --ms-row-on: rgba(255, 255, 255, 0.14); --ms-send: #30d158; --ms-send-ink: #fff;
+  display: grid; place-items: center; padding: 10px 22px 22px; overflow: hidden; }
+:root[data-theme="aurora"] .ms { --ms-side: rgba(255, 255, 255, 0.55); --ms-pane: rgba(255, 255, 255, 0.32); --ms-them: rgba(255, 255, 255, 0.9); --ms-me: rgba(10, 132, 255, 0.14);
+  --ms-field: rgba(0, 0, 0, 0.05); --ms-row-on: rgba(0, 0, 0, 0.06); }
+:root[data-theme="axon"] .ms { --ms-side: rgba(255, 255, 255, 0.02); --ms-pane: rgba(255, 255, 255, 0.03); --ms-them: rgba(255, 255, 255, 0.06); --ms-me: rgba(255, 255, 255, 0.14); }
+
+.ms-win { position: relative; width: min(1180px, 100%); height: min(780px, 100%); display: grid; grid-template-columns: minmax(270px, 330px) 1fr; overflow: hidden;
+  border-radius: var(--r-xl); background: var(--panel); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
+  box-shadow: inset 0 0 0 0.5px var(--panel-line), var(--shadow-lg); animation: ms-rise 0.7s var(--ease) both; }
+.ms-win.ms-solo { grid-template-columns: 1fr; }
+@keyframes ms-rise { from { opacity: 0; transform: translateY(18px) scale(0.985); } }
+
+/* quiet states: guest, signing in, not available */
+.ms-quiet { display: grid; justify-items: center; align-content: center; gap: 10px; text-align: center; padding: 40px 28px; max-width: 520px; margin: 0 auto; height: 100%; }
+.ms-quiet h2 { font-size: 26px; font-weight: 600; letter-spacing: -0.022em; margin: 6px 0 0; }
+.ms-quiet p { color: var(--ink2); font-size: 15.5px; line-height: 1.5; margin: 0; }
+.ms-quiet-acts { margin-top: 14px; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.ms-quiet-ic { width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; background: var(--soft); box-shadow: inset 0 0 0 0.5px var(--panel-line); color: var(--ink); }
+.ms-quiet-ic .icon { width: 28px; height: 28px; }
+.ms-dev { display: grid; gap: 10px; width: min(320px, 100%); }
+
+/* left column */
+.ms-side { display: flex; flex-direction: column; min-height: 0; background: var(--ms-side); border-right: 0.5px solid var(--panel-line); }
+.ms-side-top { display: flex; align-items: center; justify-content: space-between; padding: 26px 20px 12px 24px; }
+.ms-side-top h1 { font-size: 28px; font-weight: 600; letter-spacing: -0.025em; margin: 0; }
+.ms-find-box { display: flex; align-items: center; gap: 8px; margin: 0 16px 10px; padding: 0 12px; height: 38px; border-radius: 999px; background: var(--ms-field); color: var(--mute); }
+.ms-find-box .icon { width: 16px; height: 16px; flex: none; }
+.ms-find { flex: 1; min-width: 0; border: 0; background: none; outline: none; font-size: 14.5px; color: var(--ink); }
+.ms-find::placeholder { color: var(--mute); }
+.ms-people:empty { display: none; } .ms-people { padding: 2px 8px 8px; border-bottom: 0.5px solid var(--panel-line); }
+.ms-cap { display: block; padding: 6px 12px 4px; }
+.ms-list { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 8px 8px; overscroll-behavior: contain; }
+.ms-list-empty { padding: 18px 16px; color: var(--mute); font-size: 14px; line-height: 1.45; }
+.ms-row { width: 100%; display: flex; align-items: center; gap: 12px; padding: 9px 10px; border-radius: 16px; text-align: left; transition: background 0.2s; }
+.ms-row:hover { background: var(--soft); } .ms-row.on { background: var(--ms-row-on); } .ms-row:active { transform: scale(0.985); }
+.ms-row-mid { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.ms-row-mid b { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ms-row-mid small { font-size: 13px; color: var(--mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ms-row.unread .ms-row-mid small { color: var(--ink2); }
+.ms-new { color: var(--ink); font-weight: 500; } .ms-typing-txt { color: var(--ms-send); }
+.ms-row-end { display: grid; justify-items: end; gap: 4px; flex: none; color: var(--mute); }
+.ms-row-end time { font-size: 12px; } .ms-row-end .icon { width: 14px; height: 14px; opacity: 0.5; }
+.ms-badge { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--accent); color: #fff; font-size: 11.5px; font-weight: 700; display: grid; place-items: center; }
+.ms-person .icon { width: 18px; height: 18px; color: var(--mute); }
+.ms-side-foot { padding: 12px 16px 18px; display: flex; justify-content: center; }
+.ms-add { display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 16px; border-radius: 999px; background: var(--ms-field); font-size: 14px; font-weight: 500; color: var(--ink2); transition: background 0.2s; }
+.ms-add:hover { background: var(--soft2); } .ms-add .icon { width: 16px; height: 16px; }
+
+/* avatars */
+.ms-ava { position: relative; flex: none; width: 46px; height: 46px; border-radius: 50%; overflow: hidden; display: grid; place-items: center;
+  background: linear-gradient(140deg, hsl(var(--h) 70% 62%), hsl(calc(var(--h) + 50) 72% 42%)); color: #fff; box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.25); }
+.ms-ava b { font-size: 16px; font-weight: 600; letter-spacing: 0.01em; }
+.ms-ava img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.ms-ava.sm { width: 40px; height: 40px; } .ms-ava.sm b { font-size: 14px; }
+.ms-ava.lg { width: 84px; height: 84px; } .ms-ava.lg b { font-size: 28px; }
+.ms-ava-wrap { position: relative; flex: none; }
+.ms-dot { position: absolute; right: 0; bottom: 1px; width: 12px; height: 12px; border-radius: 50%; background: var(--ms-send); box-shadow: 0 0 0 2.5px var(--panel-solid); }
+
+/* right pane */
+.ms-pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--ms-pane); }
+.ms-pane-empty { margin: auto; display: grid; justify-items: center; gap: 8px; text-align: center; color: var(--mute); padding: 24px; }
+.ms-pane-empty b { color: var(--ink); font-size: 18px; font-weight: 600; } .ms-pane-empty small { font-size: 14px; }
+.ms-head { display: flex; align-items: center; gap: 12px; padding: 16px 18px 14px 22px; border-bottom: 0.5px solid var(--panel-line); }
+.ms-who { flex: 1; min-width: 0; display: grid; }
+.ms-who b { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ms-sub { font-size: 12.5px; color: var(--mute); min-height: 16px; }
+.ms-head-acts { display: flex; gap: 8px; }
+.ms-round { width: 36px; height: 36px; flex: none; border-radius: 50%; display: grid; place-items: center; background: var(--soft); color: var(--ink); box-shadow: inset 0 0 0 0.5px var(--panel-line); transition: background 0.2s, transform 0.2s var(--ease); text-decoration: none !important; }
+.ms-round:hover { background: var(--soft2); } .ms-round:active { transform: scale(0.92); } .ms-round .icon { width: 17px; height: 17px; }
+.ms-back { display: none; }
+
+.ms-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 18px 22px 10px; overscroll-behavior: contain; }
+.ms-msgs { display: flex; flex-direction: column; gap: 3px; }
+.ms-day { align-self: center; font-size: 12px; color: var(--mute); margin: 16px 0 8px; }
+.ms-older { align-self: center; font-size: 12px; color: var(--mute); margin: 4px 0 6px; }
+.ms-first { align-self: center; display: grid; justify-items: center; gap: 6px; text-align: center; margin: 40px 0; color: var(--mute); }
+.ms-first b { color: var(--ink); font-size: 18px; font-weight: 600; margin-top: 6px; }
+
+.ms-bubble { position: relative; max-width: min(72%, 520px); padding: 10px 14px 7px; border-radius: 20px; font-size: 15px; line-height: 1.4; margin-top: 8px;
+  -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); box-shadow: inset 0 0 0 0.5px var(--panel-line); animation: ms-pop 0.35s var(--ease) both; }
+.ms-bubble.grouped { margin-top: 2px; }
+.ms-bubble.them { align-self: flex-start; background: var(--ms-them); border-bottom-left-radius: 8px; }
+.ms-bubble.me { align-self: flex-end; background: var(--ms-me); border-bottom-right-radius: 8px; }
+.ms-bubble.pending { opacity: 0.6; }
+.ms-bubble.gone { color: var(--mute); font-style: italic; font-size: 13.5px; padding-bottom: 10px; }
+@keyframes ms-pop { from { opacity: 0; transform: translateY(6px) scale(0.98); } }
+.ms-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.ms-legacy { color: var(--mute); font-size: 13.5px; }
+.ms-time { display: block; text-align: right; font-size: 10.5px; color: var(--mute); margin-top: 3px; }
+.ms-read { color: var(--ms-send); }
+.ms-quote { display: grid; gap: 1px; padding: 6px 10px; margin-bottom: 6px; border-radius: 10px; background: var(--soft); border-left: 2px solid var(--accent); font-size: 13px; }
+.ms-quote span { color: var(--ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ms-fwd { font-size: 12px; color: var(--mute); margin-bottom: 4px; }
+.ms-file { display: flex; align-items: center; gap: 8px; padding: 8px 10px; margin: 2px 0 4px; border-radius: 12px; background: var(--soft); font-size: 13.5px; }
+.ms-file .icon { width: 16px; height: 16px; } .ms-file small { margin-left: auto; color: var(--mute); font-size: 11.5px; }
+.ms-acts { position: absolute; top: -14px; display: none; gap: 2px; padding: 3px; border-radius: 999px; background: var(--panel-solid); box-shadow: var(--shadow); z-index: 2; white-space: nowrap; }
+.ms-bubble.me .ms-acts { right: 8px; } .ms-bubble.them .ms-acts { left: 8px; }
+.ms-bubble:hover .ms-acts, .ms-bubble:focus-within .ms-acts { display: flex; }
+.ms-acts button { font-size: 12px; font-weight: 500; padding: 4px 10px; border-radius: 999px; color: var(--ink2); } .ms-acts button:hover { background: var(--soft); color: var(--ink); }
+.ms-acts .danger { color: var(--bad); }
+.ms-typing { display: inline-flex; gap: 4px; padding: 12px 14px; margin-top: 8px; align-self: flex-start; width: max-content; }
+.ms-typing i { width: 7px; height: 7px; border-radius: 50%; background: var(--ink2); animation: ms-dot 1.2s infinite ease-in-out; }
+.ms-typing i:nth-child(2) { animation-delay: 0.15s; } .ms-typing i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes ms-dot { 0%, 60%, 100% { opacity: 0.35; transform: none; } 30% { opacity: 1; transform: translateY(-3px); } }
+.ms-loading { align-self: center; display: flex; gap: 5px; margin: 40px 0; } .ms-loading i { width: 7px; height: 7px; border-radius: 50%; background: var(--mute); animation: ms-dot 1.2s infinite; }
+.ms-loading i:nth-child(2) { animation-delay: 0.15s; } .ms-loading i:nth-child(3) { animation-delay: 0.3s; }
+
+/* composer */
+.ms-compose { padding: 10px 18px 18px; }
+.ms-compose-row { display: flex; align-items: flex-end; gap: 10px; }
+.ms-field { flex: 1; min-width: 0; display: flex; align-items: flex-end; gap: 6px; padding: 5px 6px 5px 18px; border-radius: 24px; background: var(--ms-field); box-shadow: inset 0 0 0 0.5px var(--panel-line); }
+.ms-field:focus-within { box-shadow: inset 0 0 0 1px var(--accent); }
+.ms-input { flex: 1; min-width: 0; resize: none; border: 0; background: none; outline: none; color: var(--ink); font-size: 15px; line-height: 1.4; padding: 8px 0; max-height: 140px; }
+.ms-input::placeholder { color: var(--mute); }
+.ms-mic { width: 34px; height: 34px; background: none; box-shadow: none; color: var(--ink2); }
+.ms-mic.live { color: #fff; background: var(--bad); animation: ms-live 1.2s infinite; }
+@keyframes ms-live { 50% { box-shadow: 0 0 0 6px rgba(255, 69, 58, 0.25); } }
+.ms-send { height: 46px; padding: 0 24px; border-radius: 999px; background: var(--ms-send); color: var(--ms-send-ink); font-size: 15.5px; font-weight: 600; opacity: 0.55; transition: opacity 0.2s, transform 0.2s var(--ease); }
+.ms-send.ready { opacity: 1; } .ms-send:active { transform: scale(0.95); } .ms-send:disabled { opacity: 0.4; }
+.ms-reply { display: flex; align-items: center; gap: 10px; margin: 0 0 8px; padding: 8px 12px; border-radius: 14px; background: var(--soft); border-left: 2px solid var(--accent); font-size: 13px; }
+.ms-reply > div { flex: 1; min-width: 0; display: grid; } .ms-reply span { color: var(--ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ms-x { width: 28px; height: 28px; border-radius: 50%; background: var(--soft); color: var(--ink2); font-size: 18px; line-height: 1; flex: none; }
+
+/* a person's card */
+.ms-sheet { position: absolute; inset: 0; z-index: 5; display: grid; place-items: center; background: rgba(0, 0, 0, 0.32); animation: ms-fade 0.25s both; }
+@keyframes ms-fade { from { opacity: 0; } }
+.ms-sheet-in { position: relative; width: min(360px, calc(100% - 32px)); padding: 30px 24px 24px; border-radius: 28px; background: var(--panel-solid); box-shadow: var(--shadow-lg); animation: ms-rise 0.4s var(--ease) both; }
+.ms-sheet-in > .ms-x { position: absolute; top: 12px; right: 12px; }
+.ms-card { display: grid; justify-items: center; gap: 4px; text-align: center; }
+.ms-card > b { font-size: 20px; font-weight: 600; margin-top: 8px; } .ms-card > small { color: var(--mute); font-size: 13px; }
+.ms-card dl { width: 100%; margin: 16px 0 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; text-align: left; font-size: 14px; }
+.ms-card dt { color: var(--mute); } .ms-card dd { margin: 0; }
+.ms-pill { margin-top: 10px; font-size: 12.5px; padding: 4px 10px; border-radius: 999px; background: var(--soft); color: var(--ink2); }
+
+/* narrow: a list or a conversation, never both */
+@media (max-width: 760px) {
+  .ms { padding: 6px 8px 8px; }
+  .ms-win { grid-template-columns: 1fr; height: 100%; border-radius: 26px; }
+  .ms-pane { display: none; } .ms-win.ms-in .ms-side { display: none; } .ms-win.ms-in .ms-pane { display: flex; }
+  .ms-back { display: grid; } .ms-bubble { max-width: 84%; } .ms-scroll { padding: 14px 12px 8px; } .ms-compose { padding: 8px 10px 12px; }
+  .ms-send { padding: 0 16px; }
+}
+@media (prefers-reduced-motion: reduce) { .ms-win, .ms-bubble, .ms-sheet, .ms-sheet-in { animation: none; } .ms-typing i, .ms-loading i { animation: none; opacity: 0.7; } }

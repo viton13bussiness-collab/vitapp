@@ -56,7 +56,7 @@ async function api(req, res, url, user, token) {
   const p = url.pathname, m = req.method, seg = p.split('/').filter(Boolean);            // ['api', …]
   if (p === '/api/health') return json(res, 200, { ok: true, version: VERSION });
   if (p === '/api/auth/local' && m === 'POST') { const b = await body(req); const s = signInLocal(b.name); setCookie(res, s.token); return json(res, 200, { ok: true, me: pubUser(s.user) }); }
-  if (p === '/api/auth/viton' && m === 'POST') { const b = await body(req); if (!b.email || !b.password) return fail(res, 400, 'Введите почту и пароль'); const s = await signInViton(b.email, b.password); setCookie(res, s.token); return json(res, 200, { ok: true, me: pubUser(s.user) }); }
+  if (p === '/api/auth/viton' && m === 'POST') { const b = await body(req); if (!b.email || !b.password) return fail(res, 400, 'Введите почту и пароль'); const s = await signInViton(b.email, b.password); setCookie(res, s.token); return json(res, 200, { ok: true, me: pubUser(s.user), moved: s.moved }); }
   if (p === '/api/auth/logout' && m === 'POST') { signOut(token); setCookie(res, ''); return json(res, 200, { ok: true }); }
   if (p === '/api/me') return json(res, 200, { ok: true, me: pubUser(user), version: VERSION });
   if (!user) return fail(res, 401, 'Войдите в VIT');

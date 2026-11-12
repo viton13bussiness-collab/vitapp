@@ -272,3 +272,33 @@ body.desktop .top { padding-left: 88px; -webkit-app-region: drag; } body.desktop
 /* the brain: pure black behind everything, the room and the sky step away */
 body.void { background: #000; } body.void #room, body.void #sky { opacity: 0; transition: opacity 0.5s; }
 body.void .top .tabs { background: rgba(20, 20, 24, 0.7); }
+
+/* ── «Все миры»: round glass icons over the blurred room, like the visionOS home ── */
+.launch { position: fixed; inset: 0; z-index: 300; display: grid; place-items: center; padding: 24px; background: rgba(0, 0, 0, 0); -webkit-backdrop-filter: blur(0); backdrop-filter: blur(0);
+  transition: background 0.32s, backdrop-filter 0.32s, -webkit-backdrop-filter 0.32s; }
+.launch.in { background: rgba(0, 0, 0, 0.32); -webkit-backdrop-filter: blur(26px) saturate(1.3); backdrop-filter: blur(26px) saturate(1.3); }
+.lc-grid { display: grid; grid-template-columns: repeat(6, 112px); gap: 34px 26px; justify-content: center; }
+.lc-app { display: grid; justify-items: center; gap: 10px; color: #fff; opacity: 0; transform: scale(0.7) translateY(18px);
+  transition: opacity 0.42s var(--ease) calc(var(--i) * 22ms), transform 0.55s var(--spring) calc(var(--i) * 22ms); }
+.launch.in .lc-app { opacity: 1; transform: none; }
+.lc-ic { width: 92px; height: 92px; border-radius: 50%; display: grid; place-items: center; color: #fff;
+  background: radial-gradient(120% 120% at 30% 20%, var(--b), var(--a) 70%); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), inset 0 -10px 24px rgba(0, 0, 0, 0.18), 0 18px 40px rgba(0, 0, 0, 0.35);
+  transition: transform 0.35s var(--spring), box-shadow 0.3s; }
+.lc-ic .icon { width: 40px; height: 40px; stroke-width: 1.6; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.25)); }
+.lc-app:hover .lc-ic { transform: scale(1.08); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 0 0 4px rgba(255, 255, 255, 0.18), 0 24px 50px rgba(0, 0, 0, 0.4); }
+.lc-app:active .lc-ic { transform: scale(0.95); }
+.lc-app.on .lc-ic { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 0 0 3px #fff, 0 18px 40px rgba(0, 0, 0, 0.35); }
+.lc-name { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; text-shadow: 0 1px 8px rgba(0, 0, 0, 0.5); }
+@media (max-width: 860px) { .lc-grid { grid-template-columns: repeat(4, 76px); gap: 24px 14px; } .lc-ic { width: 66px; height: 66px; } .lc-ic .icon { width: 30px; height: 30px; } .lc-name { font-size: 12px; } }
+@media (max-width: 380px) { .lc-grid { grid-template-columns: repeat(3, 80px); } }
+.tab.more .icon { display: block; width: 18px; height: 18px; }
+
+/* music playing in another world */
+.mini { display: flex; align-items: center; gap: 2px; height: 34px; padding: 0 4px 0 12px; border-radius: 999px; background: var(--panel); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); box-shadow: inset 0 0 0 0.5px var(--panel-line); margin-right: 6px; max-width: 240px; }
+.mini.hide { display: none; }
+.mini-t { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; font-weight: 600; color: var(--ink); } .mini-t > span:last-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini-p { width: 28px; height: 28px; border-radius: 50%; font-size: 11px; color: var(--ink); flex: none; } .mini-p:hover { background: var(--soft); }
+.mini-eq { display: inline-flex; align-items: flex-end; gap: 2px; height: 12px; flex: none; } .mini-eq i { width: 2.5px; height: 4px; border-radius: 1px; background: #ff375f; }
+.mini-eq.on i { animation: mini-eq 0.9s ease-in-out infinite; } .mini-eq.on i:nth-child(2) { animation-delay: 0.2s; } .mini-eq.on i:nth-child(3) { animation-delay: 0.4s; }
+@keyframes mini-eq { 50% { height: 12px; } }
+@media (max-width: 860px) { .mini { max-width: 150px; } }

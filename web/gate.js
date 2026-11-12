@@ -1,6 +1,6 @@
 // The way into VITON13, like switching on a new phone: dust drifts in the dark, one calm question — VITON ID or a guest trial.
 // And the plans sheet: what a guest, a VITON ID and the VIT subscription each get, with the one step that moves you up.
-import { h, icon, api, css } from '/kit.js';
+import { h, icon, api, css, toast } from '/kit.js';
 import { createOrb } from '/orb.js';
 css('/gate.css');
 
@@ -25,7 +25,8 @@ export function gate({ onIn }) {
   }
   async function enter(promise, btn, err) {
     err.textContent = ''; btn.disabled = true; btn.classList.add('wait');
-    try { await promise(); store.set('vit.gate', ''); el.classList.add('g-out'); setTimeout(() => { orb.stop(); el.remove(); }, 900); await onIn(); }
+    try { const d = await promise(); store.set('vit.gate', ''); el.classList.add('g-out'); setTimeout(() => { orb.stop(); el.remove(); }, 900); await onIn();
+      if (d?.moved) setTimeout(() => toast('Память, диалоги и бюджет гостевого профиля теперь в вашем VITON ID'), 1200); }
     catch (e) { err.textContent = e.message; btn.disabled = false; btn.classList.remove('wait'); }
   }
   const back = () => h('button', { class: 'g-back', onclick: () => show('hello', -1) }, icon('back'), 'Назад');
@@ -75,7 +76,7 @@ export function gate({ onIn }) {
 // ── plans ───────────────────────────────────────────────────────────────────
 const WHY = {
   vit: 'Ассистент VIT входит в подписку.', budget: 'Разбор бюджета делает ассистент VIT.', brain: 'С подпиской VIT мозг растёт сам — из разговоров и бюджета.',
-  browser: 'Спросить VIT о странице можно с подпиской.', trial: 'Пробные сообщения закончились.',
+  browser: 'Спросить VIT о странице можно с подпиской.', trial: 'Пробные сообщения закончились.', messages: 'Сообщения доступны с VITON ID.', apps: 'Скачивание приложений — с VITON ID.', music: 'Подбор музыки делает ассистент VIT.',
 };
 const PLAN_CARDS = [
   { id: 'guest', name: 'Гость', price: 'Попробовать', items: ['Все миры открыты', 'Бюджет, мозг и Meridian', 'VIT — пять пробных ответов', 'Данные только на этом компьютере'] },

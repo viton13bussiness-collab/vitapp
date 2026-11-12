@@ -36,11 +36,14 @@ const brand = () => h('span', { class: 'wordmark' }, 'VITON', h('sup', null, '13
 const upgrade = (reason) => plansSheet({ me: S.me, reason });
 
 // ── shell ───────────────────────────────────────────────────────────────────
-const WORLD_TABS = [['home', 'Главная'], ['vit', 'VIT'], ['brain', 'Мозг'], ['budget', 'Бюджет'], ['browser', 'Meridian'], ['journal', 'VJOURNAL'], ['store', 'Store'], ['medicine', 'Медицина'], ['hub', 'Hub']];
+const WORLD_TABS = [['home', 'Главная'], ['vit', 'VIT'], ['brain', 'Мозг'], ['messages', 'Сообщения'], ['music', 'Музыка'], ['browser', 'Meridian']];
+// every world, as round icons in the «Все миры» grid (visionOS home); the bar keeps the six used most
+const ALL_WORLDS = [['vit', 'VIT', '#5e5ce6', '#bf5af2'], ['brain', 'Мозг', '#3a2a8f', '#64d2ff'], ['messages', 'Сообщения', '#30d158', '#0a84ff'], ['music', 'Музыка', '#ff375f', '#ff9f0a'], ['browser', 'Meridian', '#0a84ff', '#64d2ff'],
+  ['budget', 'Бюджет', '#34c759', '#a2e635'], ['apps', 'Приложения', '#636366', '#0a84ff'], ['journal', 'VJOURNAL', '#a2845e', '#e8d5b0'], ['store', 'Store', '#ff9f0a', '#ff375f'], ['medicine', 'Медицина', '#ff453a', '#ff8a80'], ['hub', 'Hub', '#5856d6', '#5ac8fa'], ['settings', 'Настройки', '#48484a', '#8e8e93']];
 const VIT_TABS = [['vit', 'Диалог'], ['memory', 'Память'], ['works', 'Работы'], ['requests', 'Заявки'], ['agents', 'Агенты']];
-const WORLDS = new Set(['brain', 'budget', 'browser', 'journal', 'store', 'medicine', 'hub']), VIT_GROUP = new Set(VIT_TABS.map(([id]) => id));
+const WORLDS = new Set(['brain', 'messages', 'music', 'budget', 'browser', 'apps', 'journal', 'store', 'medicine', 'hub']), VIT_GROUP = new Set(VIT_TABS.map(([id]) => id));
 const KNOWN = new Set(['home', 'settings', ...VIT_GROUP, ...WORLDS]);
-let main, sub, tabsEl, vitView, current = null, tabEls = {}, subEls = {}, booted = false;
+let miniEl, miniOff = null, main, sub, tabsEl, moreEl, vitView, current = null, tabEls = {}, subEls = {}, booted = false;
 const ctx = () => ({ h, icon, api, toast, when, md, css, esc, me: S.me, plan: S.me?.plan || 'guest', upgrade, theme: getTheme, go: (v, arg, from) => go(v, false, arg, from), askVit: (text) => { go('vit'); vitView.send(text); } });
 
 function shell() {
@@ -49,20 +52,44 @@ function shell() {
   main = h('main', { class: 'main' }); sub = h('div', { class: 'sub hide', 'aria-label': 'Разделы VIT' }, Object.values(subEls));
   app.replaceChildren(h('div', { class: 'shell' },
     h('header', { class: 'top' }, h('button', { class: 'logo', onclick: () => go('home'), 'aria-label': 'VITON13 — на главную' }, h('img', { src: '/logo-mark.png', alt: '' }), brand()),
-      (tabsEl = h('nav', { class: 'tabs glass', 'aria-label': 'Миры' }, Object.values(tabEls))),
-      h('div', { class: 'top-right' }, h('button', { class: 'icon-btn', title: 'Тематика', 'aria-label': 'Тематика', onclick: themeSheet }, icon('frames')),
+      (tabsEl = h('nav', { class: 'tabs glass', 'aria-label': 'Миры' }, Object.values(tabEls), (moreEl = h('button', { class: 'tab more', title: 'Все миры', 'aria-label': 'Все миры', onclick: launcher }, icon('grid'), h('span', { class: 'tl' }, 'Все миры'))))),
+      h('div', { class: 'top-right' }, (miniEl = h('div', { class: 'mini hide' })), h('button', { class: 'icon-btn', title: 'Тематика', 'aria-label': 'Тематика', onclick: themeSheet }, icon('frames')),
         h('button', { class: 'ava', title: `${S.me.name} · настройки`, 'aria-label': 'Профиль и настройки', onclick: () => go('settings') }, (S.me.name || 'V')[0].toUpperCase()))),
     sub, main));
   vitView = buildVit(); main.append(vitView.root);
   window.addEventListener('hashchange', () => go(location.hash.slice(1) || 'home', true));
   window.addEventListener('vit:theme', () => { if (S.view === 'home') go('home'); });
-  window.addEventListener('resize', () => { slideTo(tabsEl, Object.values(tabEls).find((el) => el.classList.contains('on'))); slideTo(sub, subEls[S.view]); });
+  window.addEventListener('resize', () => { slideTo(tabsEl, [...Object.values(tabEls), moreEl].find((el) => el.classList.contains('on'))); slideTo(sub, subEls[S.view]); });
   // the room shifts a little against the pointer, so the glass feels like it floats in front of it
   let px = 0, py = 0, tx = 0, ty = 0, moving = 0; const room = document.getElementById('room');
   const drift = () => { px += (tx - px) * 0.06; py += (ty - py) * 0.06; room.style.setProperty('--px', px.toFixed(2) + 'px'); room.style.setProperty('--py', py.toFixed(2) + 'px'); moving = Math.abs(tx - px) + Math.abs(ty - py) > 0.05 ? requestAnimationFrame(drift) : 0; };
   window.addEventListener('pointermove', (e) => { if (e.pointerType === 'touch' || matchMedia('(prefers-reduced-motion: reduce)').matches) return; tx = (0.5 - e.clientX / innerWidth) * 18; ty = (0.5 - e.clientY / innerHeight) * 12; moving ||= requestAnimationFrame(drift); }, { passive: true });
   go(KNOWN.has(location.hash.slice(1)) ? location.hash.slice(1) : 'home', true);
   live(); setTimeout(askFirst, 1800);
+}
+/** The music keeps playing in other worlds: a small pill in the bar with the track and play/pause; a tap goes back to Музыка. */
+function mini() {
+  const m = window.__vitMusic; if (!miniEl) return;
+  if (m && !miniOff) miniOff = m.on((why) => { if (why !== 'time') paintMini(); });
+  paintMini();
+}
+function paintMini() {
+  const m = window.__vitMusic, t = m?.state?.track, show = !!t && S.view !== 'music';
+  miniEl.classList.toggle('hide', !show); if (!show) return;
+  const playing = m.audio && !m.audio.paused;
+  miniEl.replaceChildren(h('button', { class: 'mini-t', title: 'Открыть Музыку', onclick: () => go('music') }, h('span', { class: 'mini-eq' + (playing ? ' on' : '') }, h('i'), h('i'), h('i')), h('span', null, t.title || 'Музыка')),
+    h('button', { class: 'mini-p', 'aria-label': playing ? 'Пауза' : 'Играть', onclick: () => m.toggle() }, playing ? '❚❚' : '▶'));
+}
+/** «Все миры»: the visionOS home — round glass icons floating over the blurred room. */
+function launcher() {
+  document.querySelector('.launch')?.remove();
+  const close = () => { el.classList.remove('in'); setTimeout(() => el.remove(), 320); window.removeEventListener('keydown', key); };
+  const key = (e) => { if (e.key === 'Escape') close(); };
+  const el = h('div', { class: 'launch', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Все миры', onclick: (e) => { if (e.target === el || e.target.classList.contains('lc-grid')) close(); } },
+    h('div', { class: 'lc-grid' }, ALL_WORLDS.map(([id, name, a, b], i) => h('button', { class: 'lc-app' + (S.view === id ? ' on' : ''), style: `--a:${a};--b:${b};--i:${i}`, onclick: () => { close(); go(id); } },
+      h('span', { class: 'lc-ic' }, icon(id)), h('span', { class: 'lc-name' }, name)))));
+  document.body.append(el); window.addEventListener('keydown', key);
+  requestAnimationFrame(() => el.classList.add('in'));
 }
 function badges() {
   for (const [id, n] of [['memory', S.memBadge], ['requests', S.reqBadge]]) { subEls[id].querySelector('.badge')?.remove(); if (n) subEls[id].append(h('span', { class: 'badge' }, String(n))); }
@@ -76,11 +103,13 @@ function go(view, fromHash, arg, origin) {
     S.view = view; if (!fromHash && location.hash.slice(1) !== view) history.replaceState(null, '', '#' + view);
     const inVit = VIT_GROUP.has(view);
     for (const [id, el] of Object.entries(tabEls)) { const on = id === view || (id === 'vit' && inVit); el.classList.toggle('on', on); el.setAttribute('aria-current', on ? 'page' : 'false'); }
+    const extra = !tabEls[view] && !inVit && ALL_WORLDS.find(([id]) => id === view);                  // a world outside the bar shows its name on the «Все миры» pill
+    moreEl.classList.toggle('on', !!extra); moreEl.querySelector('.tl').textContent = extra ? extra[1] : 'Все миры'; moreEl.replaceChild(icon(extra ? view : 'grid'), moreEl.firstChild);
     for (const [id, el] of Object.entries(subEls)) el.classList.toggle('on', id === view);
-    sub.classList.toggle('hide', !inVit); badges();
+    sub.classList.toggle('hide', !inVit); badges(); mini();
     document.body.classList.toggle('bare', view === 'home' && getTheme() === 'spatial');
     document.body.classList.toggle('void', view === 'brain');                                        // the brain lives on pure black, edge to edge            // the spatial home carries its own navigation, like a window in the room
-    slideTo(tabsEl, Object.values(tabEls).find((el) => el.classList.contains('on'))); slideTo(sub, subEls[view]);
+    slideTo(tabsEl, [...Object.values(tabEls), moreEl].find((el) => el.classList.contains('on'))); slideTo(sub, subEls[view]);
     current?.destroy?.(); current?.root.remove(); current = null;
     vitView.root.classList.toggle('hide', view !== 'vit'); if (view === 'vit') { vitView.resume(); return vitView.focus(); } vitView.pause();
     if (WORLDS.has(view)) return openWorld(view, arg);

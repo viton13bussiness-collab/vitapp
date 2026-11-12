@@ -39,7 +39,7 @@ export function resolve(text, engine = 'google', scope = 'all') {
   return (ENGINES[engine] || ENGINES.google).url(scope === 'viton' ? 'site:viton13.com ' + t : t);
 }
 
-export default function view(ctx) {
+export default function view(ctx, arg) {
   const { h, api, css, toast } = ctx; css('/worlds/browser.css');
   const app = /Electron/.test(navigator.userAgent);
   const ic = (name, cls = '') => h('span', { class: 'mr-ic ' + cls, html: `<svg viewBox="0 0 24 24" aria-hidden="true">${SVG[name]}</svg>` });
@@ -166,6 +166,7 @@ export default function view(ctx) {
   const saved = (store.get('tabs', []) || []).filter((u) => u === '' || web(u)).slice(0, 12);
   if (app && saved.length) { const at = store.get('active', 0) | 0; saved.forEach((u) => newTab(u, false)); activate(tabs[Math.min(at, tabs.length - 1)]); }
   else newTab('', true);
+  if (arg?.url && web(String(arg.url))) open(String(arg.url), true);                 // another world asked to open a site here
 
   return { root, open: (u) => open(u, true), destroy() { save(); alive = false; window.removeEventListener('keydown', onKey); window.removeEventListener('meridian:open', onOpen); window.removeEventListener('meridian:key', onPageKey); } };
 }

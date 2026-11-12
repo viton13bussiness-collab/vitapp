@@ -1,6 +1,6 @@
 // Who is using VIT: a VITON ID account (same sign-in the site uses) or a local profile that never leaves this computer.
 import crypto from 'node:crypto';
-import { one, run, now } from './db.mjs';
+import { all, one, run, now, getSetting, setSetting } from './db.mjs';
 
 const SITE = 'https://www.viton13.com';
 const userError = (message) => Object.assign(new Error(message), { user: true });
@@ -35,7 +35,21 @@ export async function signInViton(email, password) {
   if (!r.ok) throw userError(CODES[String(d?.error?.message || '').split(' : ')[0]] || 'Не получилось войти. Попробуйте ещё раз');
   const name = d.displayName || String(d.email).split('@')[0];
   const user = upsert('viton-' + d.localId, 'viton', d.email, name);
-  return { user, token: session(user) };
+  return { user, token: session(user), moved: adoptGuest(user.id) };
+}
+
+/** The first VITON ID sign-in on this computer takes over what the guest profile gathered: memory, conversations, works,
+ *  requests, budget and the worlds' own tables — every table with a `user` column. Only into an account that is still empty here. */
+export function adoptGuest(to) {
+  const guest = one("SELECT id FROM users WHERE kind IN ('local', 'guest') ORDER BY created LIMIT 1"); if (!guest) return 0;
+  const tables = all("SELECT name FROM sqlite_master WHERE type = 'table'").map((r) => r.name)
+    .filter((t) => t !== 'sessions' && /^\w+$/.test(t) && all(`PRAGMA table_info(${t})`).some((c) => c.name === 'user'));
+  if (tables.some((t) => one(`SELECT 1 AS x FROM ${t} WHERE user = ? LIMIT 1`, to))) return 0;
+  let moved = 0;
+  for (const t of tables) moved += Number(run(`UPDATE ${t} SET user = ? WHERE user = ?`, to, guest.id).changes || 0);
+  const theme = getSetting('theme:' + guest.id, ''); if (theme) setSetting('theme:' + to, theme);
+  if (moved) console.log(`[auth] guest profile → ${to}: ${moved} rows`);
+  return moved;
 }
 
 export function userByToken(token) { if (!token) return null; const s = one('SELECT user FROM sessions WHERE token = ?', token); return s ? one('SELECT * FROM users WHERE id = ?', s.user) : null; }
