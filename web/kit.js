@@ -21,6 +21,10 @@ export const ICON = {
   journal: '<path d="M6 4.500h9.500a2 2 0 012 2V19.500H8a2 2 0 01-2-2z"/><path d="M6 17.500a2 2 0 012-2h9.500M9.500 8.500h4.500"/>',
   store: '<path d="M5.500 8.500h13l-1 11h-11z"/><path d="M9 8.500V7.500a3 3 0 016 0v1"/>',
   medicine: '<path d="M12 19.500s-7-4.200-7-9.400a4.100 4.100 0 017-2.900 4.100 4.100 0 017 2.900c0 5.200-7 9.400-7 9.400z"/><path d="M8 12.300h2l1.200-2 1.600 3.800 1.200-1.800h2"/>',
+  brain: '<path d="M12 5.6c-1-1.6-3.6-1.9-4.9-.3-1.6-.1-2.9 1.3-2.6 2.9-1.3.8-1.6 2.6-.6 3.7-.9 1.3-.4 3.1 1 3.7.2 1.7 1.9 2.8 3.5 2.3.9 1.2 2.6 1.4 3.6.4z"/><path d="M12 5.6c1-1.6 3.6-1.9 4.9-.3 1.6-.1 2.9 1.3 2.6 2.9 1.3.8 1.6 2.6.6 3.7.9 1.3.4 3.1-1 3.7-.2 1.7-1.9 2.8-3.5 2.3-.9 1.2-2.6 1.4-3.6.4z"/><path d="M12 5.6v12.7M8.6 9.5c1 .2 1.7.9 1.8 1.9M15.4 13.6c-1-.1-1.8.6-2 1.6"/>',
+  budget: '<rect x="3.5" y="6.5" width="17" height="12.5" rx="3"/><path d="M6.5 6.5l8.2-2.8a1.5 1.5 0 0 1 1.9 1l.5 1.8M15 12.8h5.5"/><circle cx="16" cy="12.8" r="1" fill="currentColor" stroke="none"/>',
+  browser: '<circle cx="12" cy="12" r="8.5"/><ellipse cx="12" cy="12" rx="3.6" ry="8.5"/><path d="M3.5 12h17"/>',
+  lock: '<rect x="5.5" y="10.5" width="13" height="9.5" rx="2.5"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/>',
   hub: '<rect x="4.500" y="4.500" width="6" height="6" rx="1.800"/><rect x="13.500" y="4.500" width="6" height="6" rx="1.800"/><rect x="4.500" y="13.500" width="6" height="6" rx="1.800"/><rect x="13.500" y="13.500" width="6" height="6" rx="1.800"/>',
   frames: '<rect x="3.500" y="5" width="11.500" height="14" rx="2.500"/><path d="M18 7.500h1a1.500 1.500 0 011.500 1.500v6a1.500 1.500 0 01-1.500 1.500h-1"/>',
   help: '<circle cx="12" cy="12" r="8.500"/><path d="M9.700 9.700a2.400 2.400 0 114 1.800c-.900.700-1.700 1.200-1.700 2.300M12 16.700v.2"/>',
@@ -33,11 +37,11 @@ export const ICON = {
 export const icon = (name) => h('span', { html: `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true">${ICON[name]}</svg>`, style: 'display:contents' });
 export async function api(path, opts = {}) {
   const res = await fetch(path, { method: opts.method || (opts.body ? 'POST' : 'GET'), headers: opts.body ? { 'content-type': 'application/json' } : undefined, body: opts.body ? JSON.stringify(opts.body) : undefined });
-  const d = await res.json().catch(() => ({})); if (!res.ok) throw new Error(d.message || 'Что-то пошло не так'); return d;
+  const d = await res.json().catch(() => ({})); if (!res.ok) throw Object.assign(new Error(d.message || 'Что-то пошло не так'), { status: res.status, code: d.code }); return d;
 }
 export async function stream(path, body, on, signal) {
   const res = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal });
-  if (!res.ok || !res.body) throw new Error((await res.json().catch(() => ({}))).message || 'Нет связи с VIT');
+  if (!res.ok || !res.body) { const d = await res.json().catch(() => ({})); throw Object.assign(new Error(d.message || 'Нет связи с VIT'), { status: res.status, code: d.code }); }
   const reader = res.body.getReader(), dec = new TextDecoder(); let buf = '';
   for (;;) { const { value, done } = await reader.read(); if (done) break; buf += dec.decode(value, { stream: true });
     let i; while ((i = buf.indexOf('\n\n')) >= 0) { const chunk = buf.slice(0, i); buf = buf.slice(i + 2); if (chunk.startsWith('data:')) on(JSON.parse(chunk.slice(5))); } }

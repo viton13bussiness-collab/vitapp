@@ -28,12 +28,40 @@ async function boot() {
   await ensureServer();
   session.defaultSession.setPermissionRequestHandler((_wc, permission, done) => done(permission === 'media'));      // the microphone, nothing else
   const win = new BrowserWindow({ width: 1180, height: 800, minWidth: 380, minHeight: 560, title: 'VITON13', backgroundColor: '#0b0a09', icon: path.join(__dirname, 'icon.png'),
-    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default', trafficLightPosition: { x: 18, y: 18 }, webPreferences: { contextIsolation: true, sandbox: true } });
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default', trafficLightPosition: { x: 18, y: 18 }, webPreferences: { contextIsolation: true, sandbox: true, webviewTag: true } });
   win.webContents.setWindowOpenHandler(({ url: target }) => { if (target.startsWith(url)) return { action: 'allow' }; if (/^https?:\/\//.test(target)) shell.openExternal(target); return { action: 'deny' }; });
   win.webContents.on('will-navigate', (e, target) => { if (!target.startsWith(url)) { e.preventDefault(); if (/^https?:\/\//.test(target)) shell.openExternal(target); } });
   win.loadURL(url);
 }
 app.whenReady().then(boot);
+
+// Meridian, the browser inside VITON13: pages open in <webview> tags with their own session, no Node, no preload, nothing of the app.
+const BROWSER = 'persist:meridian';
+app.whenReady().then(() => {
+  const ses = session.fromPartition(BROWSER);
+  ses.setUserAgent(ses.getUserAgent().replace(/\s(Electron|VITON13|viton13)\/\S+/g, ''));                       // sites see an ordinary Chrome
+  ses.setPermissionRequestHandler((_wc, permission, done) => done(['fullscreen', 'clipboard-sanitized-write'].includes(permission)));
+});
+app.on('web-contents-created', (_e, wc) => {
+  wc.on('will-attach-webview', (e, prefs, params) => {
+    delete prefs.preload; Object.assign(prefs, { nodeIntegration: false, nodeIntegrationInSubFrames: false, contextIsolation: true, sandbox: true, webSecurity: true });
+    params.partition = BROWSER;
+    if (!/^(https?:|about:blank)/.test(params.src || 'about:blank')) e.preventDefault();
+  });
+  if (wc.getType() !== 'webview') return;
+  // a link that wants a new window becomes a new Meridian tab
+  wc.setWindowOpenHandler(({ url: target }) => {
+    if (/^https?:\/\//.test(target)) wc.hostWebContents?.executeJavaScript(`window.dispatchEvent(new CustomEvent('meridian:open', { detail: ${JSON.stringify(target)} }))`).catch(() => {});
+    return { action: 'deny' };
+  });
+  wc.on('will-navigate', (e, target) => { if (!/^https?:/.test(target)) e.preventDefault(); });
+  // Meridian's shortcuts keep working while a page has the focus
+  wc.on('before-input-event', (e, input) => {
+    const k = String(input.key || '').toLowerCase();
+    if (input.type !== 'keyDown' || !(input.meta || input.control) || input.alt || !['l', 't', 'w', 'r', '[', ']', 'f'].includes(k)) return;
+    e.preventDefault(); wc.hostWebContents?.executeJavaScript(`window.dispatchEvent(new CustomEvent('meridian:key', { detail: ${JSON.stringify(k)} }))`).catch(() => {});
+  });
+});
 // `--gpu-report=<file>` writes what the graphics stack can do — for diagnosing a window where 3D does not start
 { const out = process.argv.find((a) => a.startsWith('--gpu-report='))?.slice(13), gone = [];
   if (out) { app.on('child-process-gone', (_e, d) => gone.push(d));

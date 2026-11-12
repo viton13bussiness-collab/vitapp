@@ -1,4 +1,4 @@
-// Memory as a graph: every thought is a node, every link is meaning. Eight kinds of memory, stored only on this computer.
+// Memory as a graph: every thought is a node, every link is meaning. Nine kinds of memory, stored only on this computer.
 import { all, one, run, now } from './db.mjs';
 import { askJSON, embed } from './ladder.mjs';
 
@@ -7,6 +7,7 @@ export const CATS = [
   { id: 'knowledge', name: 'Знания', color: '#0a84ff' }, { id: 'people', name: 'Люди', color: '#30d158' },
   { id: 'goals', name: 'Цели', color: '#ffd60a' }, { id: 'tasks', name: 'Задачи', color: '#ff9f0a' },
   { id: 'ideas', name: 'Идеи', color: '#66d4cf' }, { id: 'said', name: 'Вы говорили', color: '#64d2ff' },
+  { id: 'money', name: 'Деньги', color: '#34e0a1' },
 ];
 const CAT_IDS = new Set(CATS.map((c) => c.id));
 
@@ -26,7 +27,7 @@ export async function recall(user, text, k = 6) {
 }
 
 const EXTRACT = `Ты — память персонального агента VIT. Из сообщения человека выдели только то, что стоит помнить о нём надолго.
-Категории (cat): emotions — эмоции; mood — настроение; knowledge — факты о человеке, его деле, вкусах, обстоятельствах; people — люди из его жизни; goals — цели; tasks — конкретные задачи и дела; ideas — идеи; said — важная прямая мысль или принцип.
+Категории (cat): emotions — эмоции; mood — настроение; knowledge — факты о человеке, его деле, вкусах, обстоятельствах; people — люди из его жизни; goals — цели; tasks — конкретные задачи и дела; money — деньги: доходы, траты, долги, накопления, финансовые цели; ideas — идеи; said — важная прямая мысль или принцип.
 Правила: ничего не выдумывай и не описывай ассистента; запоминай только то, что человек сам сообщил о себе, своих делах и людях; вопросы к ассистенту, приветствия и просьбы без личных фактов не запоминай — верни {\"items\":[]}; каждый пункт — одно короткое предложение на русском о человеке в третьем лице («Хочет…», «Работает…»); не больше 4 пунктов.
 Ответ строго JSON: {"items":[{"cat":"goals","text":"…"}]}`;
 
@@ -57,3 +58,14 @@ export function graph(user) {
 }
 export function forget(user, id) { const n = one('SELECT id FROM nodes WHERE id = ? AND user = ?', id, user); if (!n) return false; run('DELETE FROM edges WHERE a = ? OR b = ?', id, id); run('DELETE FROM nodes WHERE id = ?', id); return true; }
 export function forgetAll(user) { for (const n of all('SELECT id FROM nodes WHERE user = ?', user)) run('DELETE FROM edges WHERE a = ? OR b = ?', n.id, n.id); run('DELETE FROM nodes WHERE user = ?', user); }
+
+/** Put one thought into the brain by hand (or from a world such as the budget). Links it to what is close in meaning. */
+export async function addNode(user, cat, text, quote = '') {
+  const txt = String(text || '').trim().slice(0, 240); if (txt.length < 2 || !CAT_IDS.has(cat)) return null;
+  const v = await embed(txt).catch(() => null), existing = all('SELECT * FROM nodes WHERE user = ?', user);
+  const scored = existing.map((n) => ({ n, s: v && n.emb ? cos(v, fromBlob(n.emb)) : overlap(txt, n.text) })).sort((a, b) => b.s - a.s);
+  if (scored[0]?.s > 0.93) { run('UPDATE nodes SET weight = weight + 1 WHERE id = ?', scored[0].n.id); return pub({ ...scored[0].n, weight: scored[0].n.weight + 1 }); }
+  const id = Number(run('INSERT INTO nodes (user, cat, text, quote, emb, created) VALUES (?, ?, ?, ?, ?, ?)', user, cat, txt, String(quote || '').slice(0, 300), toBlob(v), now()).lastInsertRowid);
+  for (const x of scored.slice(0, 3)) if (x.s > 0.5) run('INSERT OR IGNORE INTO edges (a, b, kind, w) VALUES (?, ?, ?, ?)', x.n.id, id, 'meaning', x.s);
+  return pub(one('SELECT * FROM nodes WHERE id = ?', id));
+}

@@ -7,7 +7,8 @@ import { HOST, PORT, WEB, WORK, VERSION } from './config.mjs';
 import { all, one, run, now, getSetting, setSetting } from './db.mjs';
 import { signInLocal, signInViton, signOut, userByToken } from './auth.mjs';
 import { handle, pulse, jobShape } from './agent.mjs';
-import { graph, forget, forgetAll, CATS } from './memory.mjs';
+import { graph, forget, forgetAll, addNode, CATS } from './memory.mjs';
+import { planOf, subscription, vitBlocked, listGrants, setGrant } from './plan.mjs';
 import { status as modelStatus, test as modelTest } from './ladder.mjs';
 import { AGENTS } from './agents.mjs';
 import { listRequests, allRequests, createRequest, updateRequest, onRequest, teamChannel, STATUS } from './team.mjs';
@@ -28,7 +29,7 @@ const COOKIE = `vit${PORT === 5313 ? '' : PORT}`;
 const setCookie = (res, token) => res.setHeader('set-cookie', `${COOKIE}=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${token ? 31536000 : 0}`);
 async function raw(req, limit) { const chunks = []; let n = 0; for await (const c of req) { n += c.length; if (n > limit) throw Object.assign(new Error('Слишком большой запрос'), { http: 413 }); chunks.push(c); } return Buffer.concat(chunks); }
 async function body(req) { const b = await raw(req, 1e6); if (!b.length) return {}; try { return JSON.parse(b.toString('utf8')); } catch { throw Object.assign(new Error('Некорректный запрос'), { http: 400 }); } }
-const pubUser = (u) => u && { id: u.id, kind: u.kind, name: u.name, email: u.email };
+const pubUser = (u) => u && { id: u.id, kind: u.kind === 'viton' ? 'viton' : 'guest', name: u.name, email: u.email, plan: planOf(u) };
 
 function serve(res, file, extra = {}) {
   fs.readFile(file, (err, data) => {
@@ -59,29 +60,36 @@ async function api(req, res, url, user, token) {
   if (p === '/api/auth/logout' && m === 'POST') { signOut(token); setCookie(res, ''); return json(res, 200, { ok: true }); }
   if (p === '/api/me') return json(res, 200, { ok: true, me: pubUser(user), version: VERSION });
   if (!user) return fail(res, 401, 'Войдите в VIT');
+  user.plan = planOf(user);
 
-  if (p === '/api/state') { const conv = currentConv(user); return json(res, 200, { ok: true, me: pubUser(user), conv: conv.id, messages: messages(conv.id), cats: CATS, agents: AGENTS.map(({ id, name, color, about }) => ({ id, name, color, about })), voice: voiceStatus(), speak: getSetting('speak', 'voice'), theme: getSetting('theme:' + user.id, ''), version: VERSION }); }
+  if (p === '/api/state') { const conv = currentConv(user); return json(res, 200, { ok: true, me: pubUser(user), conv: conv.id, messages: messages(conv.id), cats: CATS, agents: AGENTS.map(({ id, name, color, about }) => ({ id, name, color, about })), voice: voiceStatus(), speak: getSetting('speak', 'voice'), theme: getSetting('theme:' + user.id, ''), sub: subscription(user), version: VERSION }); }
+  if (p === '/api/plan') return json(res, 200, { ok: true, sub: subscription(user) });
   if (p === '/api/convs' && m === 'GET') return json(res, 200, { ok: true, items: all("SELECT id, title, updated FROM convs WHERE user = ? AND title != '' ORDER BY updated DESC LIMIT 40", user.id) });
   if (p === '/api/convs' && m === 'POST') { const id = Number(run('INSERT INTO convs (user, title, created, updated) VALUES (?, ?, ?, ?)', user.id, '', now(), now()).lastInsertRowid); return json(res, 200, { ok: true, conv: id, messages: [] }); }
   if (seg[1] === 'convs' && seg[2] && m === 'GET') { const c = ownConv(user, seg[2]); if (!c) return fail(res, 404, 'Диалог не найден'); run('UPDATE convs SET updated = ? WHERE id = ?', now(), c.id); return json(res, 200, { ok: true, conv: c.id, messages: messages(c.id) }); }
 
   if (p === '/api/chat' && m === 'POST') {
     const b = await body(req), c = ownConv(user, b.conv); if (!c) return fail(res, 404, 'Диалог не найден'); if (!String(b.text || '').trim()) return fail(res, 400, 'Пустое сообщение');
+    const blocked = vitBlocked(user); if (blocked) return json(res, 402, { ok: false, code: blocked.code, message: blocked.message });
     const send = sse(req, res), ac = new AbortController(); res.on('close', () => { if (!res.writableEnded) ac.abort(); });
     try { await handle({ user, convId: c.id, text: b.text, emit: send, signal: ac.signal }); }
     catch (e) { if (!ac.signal.aborted) send({ type: 'error', message: e.code ? e.message : 'Что-то пошло не так. Попробуйте ещё раз.' }); if (!e.code && !ac.signal.aborted) console.error('[chat]', e); }
     send({ type: 'done' }); return res.end();
   }
-  if (p === '/api/pulse') { try { return json(res, 200, { ok: true, message: await pulse(user, currentConv(user).id) }); } catch { return json(res, 200, { ok: true, message: null }); } }
+  if (p === '/api/pulse') { if (user.plan !== 'vit') return json(res, 200, { ok: true, message: null }); try { return json(res, 200, { ok: true, message: await pulse(user, currentConv(user).id) }); } catch { return json(res, 200, { ok: true, message: null }); } }
   if (p === '/api/events') { const send = sse(req, res), f = { user: user.id, team: url.searchParams.get('team') === '1', send }; feeds.add(f); send({ type: 'hello' }); const beat = setInterval(() => res.write(': ping\n\n'), 25000); return req.on('close', () => { clearInterval(beat); feeds.delete(f); }); }
 
   if (p === '/api/memory' && m === 'GET') return json(res, 200, { ok: true, ...graph(user.id) });
   if (p === '/api/memory' && m === 'DELETE') { forgetAll(user.id); return json(res, 200, { ok: true }); }
+  if (p === '/api/memory' && m === 'POST') { const b = await body(req), n = await addNode(user.id, b.cat, b.text, b.quote); return n ? json(res, 200, { ok: true, node: n }) : fail(res, 400, 'Напишите мысль и выберите раздел'); }
   if (seg[1] === 'memory' && seg[2] && m === 'DELETE') return json(res, 200, { ok: forget(user.id, Number(seg[2])) });
 
   if (p === '/api/jobs') return json(res, 200, { ok: true, items: all('SELECT * FROM jobs WHERE user = ? ORDER BY id DESC LIMIT 60', user.id).map(jobShape) });
   if (p === '/api/requests' && m === 'GET') return json(res, 200, { ok: true, items: listRequests(user.id), channel: teamChannel() });
   if (p === '/api/requests' && m === 'POST') { const b = await body(req); if (!String(b.title || '').trim()) return fail(res, 400, 'Нет названия заявки'); return json(res, 200, { ok: true, request: await createRequest(user, b.title, b.detail), channel: teamChannel() }); }
+  if (seg[1] === 'team' && seg[2] === 'grants' && !subscription(user).owner) return fail(res, 403, 'Подписки выдаёт только владелец VITON13 — войдите его VITON ID');
+  if (p === '/api/team/grants' && m === 'GET') return json(res, 200, { ok: true, items: listGrants() });
+  if (p === '/api/team/grants' && m === 'POST') { const b = await body(req); return setGrant(b.email, Number(b.days)) ? json(res, 200, { ok: true, items: listGrants() }) : fail(res, 400, 'Проверьте почту'); }
   if (p === '/api/team/requests' && m === 'GET') return json(res, 200, { ok: true, items: allRequests(), statuses: STATUS });
   if (seg[1] === 'team' && seg[2] === 'requests' && seg[3] && m === 'POST') { const b = await body(req), r = updateRequest(Number(seg[3]), b.status, b.note); return r ? json(res, 200, { ok: true, request: r }) : fail(res, 400, 'Не получилось обновить заявку'); }
 

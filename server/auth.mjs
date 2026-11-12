@@ -15,13 +15,14 @@ const CODES = { INVALID_LOGIN_CREDENTIALS: 'Неверная почта или �
 
 function session(user) { const token = crypto.randomBytes(32).toString('hex'); run('INSERT INTO sessions (token, user, created) VALUES (?, ?, ?)', token, user.id, now()); return token; }
 function upsert(id, kind, email, name) {
-  run('INSERT INTO users (id, kind, email, name, created) VALUES (?, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET email = excluded.email, name = excluded.name', id, kind, email, name, now());
+  run('INSERT INTO users (id, kind, email, name, created) VALUES (?, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET kind = excluded.kind, email = excluded.email, name = excluded.name', id, kind, email, name, now());
   return one('SELECT * FROM users WHERE id = ?', id);
 }
 
 export function signInLocal(name) {
-  const clean = String(name || '').trim().slice(0, 40); if (!clean) throw userError('Как к вам обращаться?');
-  const user = one("SELECT * FROM users WHERE kind = 'local'") ? upsert(one("SELECT id FROM users WHERE kind = 'local'").id, 'local', '', clean) : upsert('local-' + crypto.randomBytes(6).toString('hex'), 'local', '', clean);
+  const clean = String(name || '').trim().slice(0, 40) || 'Гость';
+  const prev = one("SELECT id FROM users WHERE kind IN ('local', 'guest') ORDER BY created LIMIT 1");             // one guest profile per computer
+  const user = upsert(prev ? prev.id : 'guest-' + crypto.randomBytes(6).toString('hex'), 'guest', '', clean);
   return { user, token: session(user) };
 }
 

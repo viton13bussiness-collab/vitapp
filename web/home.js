@@ -12,6 +12,9 @@ export const THEMES = [
 ];
 export const WORLDS = [
   { id: 'vit', name: 'VIT', cap: 'Агент', line: 'Персональный агент. Вы ставите цель — он доводит её до результата.' },
+  { id: 'brain', name: 'Мозг', cap: 'Память', line: 'Ваша память в 3D: мысли, цели и деньги — звёзды, связи — нейросети.' },
+  { id: 'budget', name: 'Бюджет', cap: 'Деньги', line: 'Деньги, траты и цели. С VIT бюджет считает себя сам.' },
+  { id: 'browser', name: 'Meridian', cap: 'Браузер', line: 'Встроенный браузер: весь интернет и проекты GitHub, не выходя из системы.' },
   { id: 'journal', name: 'VJOURNAL', cap: 'Журнал', line: 'Журнал VITON13: материалы на полке и в библиотеке.' },
   { id: 'store', name: 'Store', cap: 'Магазин', line: 'Магазины VITON13 в одном зале.' },
   { id: 'medicine', name: 'Медицина', cap: 'Тело', line: 'Тело человека по зонам: что там находится и когда провериться.' },
@@ -78,7 +81,7 @@ export function drawScene() {
 }
 
 // ── a photograph for each world (VITON13's own imagery), plus the live dust for VIT ──
-const PHOTO = { vit: '/media/vit.jpg', journal: '/media/journal.jpg', store: '/media/beauty.jpg', hub: '/media/hub.jpg', medicine: '/media/body.webp' };
+const PHOTO = { brain: '/media/brain.jpg', budget: '/media/budget.jpg', browser: '/media/meridian.jpg', vit: '/media/vit.jpg', journal: '/media/journal.jpg', store: '/media/beauty.jpg', hub: '/media/hub.jpg', medicine: '/media/body.webp' };
 /** A world's picture as an element. opts.live puts the turning dust over VIT's photograph. */
 function picture(id, orbs, opts = {}) {
   const box = h('div', { class: `art art-${id}` }, h('img', { src: PHOTO[id], alt: '', loading: 'lazy', decoding: 'async', draggable: 'false' }));
@@ -121,7 +124,7 @@ const LAYOUT = {
     root.append(h('div', { class: 'sp-win' },
       h('div', { class: 'sp-col' }, h('div', { class: 'sp-brand' }, brand()),
         h('button', { class: 'sp-tile sp-pic', onclick: () => ctx.go('settings'), 'aria-label': 'VITON ID — профиль' }, h('img', { src: '/media/id.jpg', alt: '' })),
-        h('div', { class: 'sp-tile sp-white' }, h('h3', null, 'Одна экосистема.', h('br'), 'Пять миров.'), h('p', null, 'Агент, журнал, магазин, медицина и приложения — под одним входом.'))),
+        h('div', { class: 'sp-tile sp-white' }, h('h3', null, 'Одна система.', h('br'), 'Вся жизнь.'), h('p', null, 'Агент, мозг, бюджет, браузер, журнал, магазин, медицина и приложения — под одним входом.'))),
       hero,
       h('div', { class: 'sp-col' }, h('div', { class: 'sp-tile sp-list' }, h('div', { class: 'sp-list-head' }, h('b', null, 'Миры'), h('button', { class: 'sp-i', 'aria-label': 'Помощь', onclick: () => ctx.go('settings', { tab: 'help' }) }, 'i')), list, open),
         h('button', { class: 'sp-tile sp-explore', onclick: (e) => ctx.go('vit', undefined, e.currentTarget) }, h('img', { src: '/media/portal.jpg', alt: '' }), h('span', null, 'Спросить VIT')))));
@@ -168,7 +171,7 @@ const LAYOUT = {
     const paint = () => row.replaceChildren(...WORLDS.map((w, i) => h('button', { class: 'au-card', onclick: (e) => ctx.go(w.id, undefined, e.currentTarget.querySelector('.art')) }, thumb(w.id), h('span', { class: 'au-t' }, h('span', { class: 'cap' }, `0${i + 1}`), h('b', null, w.name), h('small', null, info[w.id] || w.cap)), icon('right'))));
     paint();
     root.append(h('div', { class: 'au-swoosh', 'aria-hidden': 'true' }, h('i', { class: 'a' }), h('i', { class: 'b' }), h('i', { class: 'c' })),
-      h('div', { class: 'au-in' }, h('span', { class: 'cap au-kicker' }, 'Экосистема VITON13 · пять миров'), h('h1', null, h('i', null, 'одна экосистема,'), h('br'), 'пять миров.'),
+      h('div', { class: 'au-in' }, h('span', { class: 'cap au-kicker' }, 'Операционная система VITON13'), h('h1', null, h('i', null, 'одна система,'), h('br'), 'вся жизнь.'),
         h('p', null, `${ctx.me.name}, выберите, куда войти. VIT доведёт цель до результата, остальное — рядом.`), row),
       h('div', { class: 'au-foot' }, h('span', null, 'Агент · журнал · магазин · медицина · приложения'), h('span', null, 'VITON13 OS')));
   },

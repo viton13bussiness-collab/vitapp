@@ -14,6 +14,9 @@
   <h1 style="font-size:34px;letter-spacing:-.03em;margin:10px 0 6px">Пульт команды</h1>
   <p style="color:var(--mute2);margin-bottom:24px">Сторона исполнителей. Смените статус заявки — человек увидит это в приложении в ту же секунду.</p>
   <div id="list" class="stack"></div>
+  <h2 style="font-size:24px;letter-spacing:-.02em;margin:40px 0 6px">Подписки VIT</h2>
+  <p style="color:var(--mute2);margin-bottom:16px">Выдать или снять подписку по почте VITON ID. Видно только владельцу.</p>
+  <div id="grants" class="stack"></div>
 </div>
 <script type="module">
 const list = document.getElementById('list');
@@ -29,6 +32,17 @@ async function load() {
       el('div', { class: 'acts' }, ...Object.entries(d.statuses).filter(([id]) => id !== 'new' && id !== r.status).map(([id, name]) => el('button', { class: 'btn sm ' + (id === 'cancelled' ? 'danger' : id === 'done' ? '' : 'ghost'), onclick: set(id) }, name))));
   }) : [el('div', { class: 'empty' }, 'Заявок пока нет.')]));
 }
+const grants = document.getElementById('grants');
+async function loadGrants() {
+  const res = await fetch('/api/team/grants'), d = await res.json().catch(() => ({}));
+  if (!res.ok) return grants.replaceChildren(el('div', { class: 'empty' }, d.message || 'Нет доступа.'));
+  const email = el('input', { class: 'field sm', type: 'email', placeholder: 'Почта VITON ID', 'aria-label': 'Почта' });
+  const days = el('select', { class: 'field sm', 'aria-label': 'Срок' }, ...[['30', 'На 30 дней'], ['365', 'На год'], ['-1', 'Бессрочно']].map(([v, t]) => { const o = el('option', { value: v }, t); return o; }));
+  const post = async (e, n) => { const r = await fetch('/api/team/grants', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: e, days: n }) }); if (!r.ok) alert((await r.json()).message); loadGrants(); };
+  grants.replaceChildren(el('div', { class: 'card' }, el('div', { class: 'acts' }, email, days, el('button', { class: 'btn sm', onclick: () => post(email.value, Number(days.value)) }, 'Выдать'))),
+    ...d.items.map((g) => el('div', { class: 'card' }, el('div', { class: 'acts' }, el('b', { class: 'grow' }, g.email), el('span', { class: 'hint' }, g.until ? 'до ' + new Date(g.until).toLocaleDateString('ru-RU') : 'бессрочно'), el('button', { class: 'btn sm ghost', onclick: () => post(g.email, 0) }, 'Снять')))));
+}
+loadGrants();
 load(); new EventSource('/api/events?team=1').onmessage = (e) => { if (JSON.parse(e.data).type === 'request') load(); };
 </script>
 </body>

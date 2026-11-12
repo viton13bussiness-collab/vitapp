@@ -18,9 +18,9 @@ const q = new URLSearchParams(location.search), world = q.get('world') || 'journ
 if (q.get('nogl') === '1') { const g = HTMLCanvasElement.prototype.getContext; HTMLCanvasElement.prototype.getContext = function (t, ...r) { return /webgl/.test(t) ? null : g.call(this, t, ...r); }; }      // test the no-3D path
 document.documentElement.dataset.theme = q.get('theme') || 'spatial';
 const me = (await api('/api/me').catch(() => ({}))).me || (await api('/api/auth/local', { body: { name: 'Гость' } })).me;
-const ctx = { h, icon, api, toast, when, md, css, esc, me, theme: () => document.documentElement.dataset.theme, go: (v, arg) => toast('go → ' + v + (arg ? ' ' + JSON.stringify(arg) : '')), askVit: (t) => toast('VIT ← ' + t) };
+const ctx = { h, icon, api, toast, when, md, css, esc, me, plan: q.get('plan') || me.plan || 'vit', upgrade: (why) => toast('upgrade ← ' + (why || '')), theme: () => document.documentElement.dataset.theme, go: (v, arg) => toast('go → ' + v + (arg ? ' ' + JSON.stringify(arg) : '')), askVit: (t) => toast('VIT ← ' + t) };
 const bar = document.getElementById('bar');
-if (q.get('bar') === '0') bar.remove(); else bar.append(`world: `, ...['journal', 'store', 'hub', 'medicine'].map((w) => h('a', { href: `?world=${w}&theme=${document.documentElement.dataset.theme}`, style: 'margin-right:8px' }, w)), ' · theme: ', ...['spatial', 'ribbon', 'axon', 'aurora', 'horizon'].map((t) => h('a', { href: `?world=${world}&theme=${t}`, style: 'margin-right:8px' }, t)));
+if (q.get('bar') === '0') bar.remove(); else bar.append(`world: `, ...['journal', 'store', 'hub', 'medicine', 'brain', 'budget', 'browser'].map((w) => h('a', { href: `?world=${w}&theme=${document.documentElement.dataset.theme}`, style: 'margin-right:8px' }, w)), ' · theme: ', ...['spatial', 'ribbon', 'axon', 'aurora', 'horizon'].map((t) => h('a', { href: `?world=${world}&theme=${t}`, style: 'margin-right:8px' }, t)));
 const view = (window.__view = (await import(`/worlds/${world}.js`)).default(ctx));
 document.getElementById('app').append(view.root);
 </script>

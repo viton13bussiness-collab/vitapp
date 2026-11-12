@@ -6,9 +6,10 @@ import { $, h, icon, api, stream, toast, when, md, css, esc, slideTo } from '/ki
 import Fuse from '/vendor/lib/fuse.basic.min.mjs';
 import { viewHome, themeSheet, initTheme, getTheme } from '/home.js';
 import { runIntro } from '/intro.js';
+import { gate, plansSheet } from '/gate.js';
 
 // ── state ───────────────────────────────────────────────────────────────────
-const S = { me: null, conv: null, messages: [], cats: [], agents: [], jobs: new Map(), voice: {}, speak: 'voice', view: 'home', busy: false, memBadge: 0, reqBadge: 0, version: '' };
+const S = { me: null, sub: null, conv: null, messages: [], cats: [], agents: [], jobs: new Map(), voice: {}, speak: 'voice', view: 'home', busy: false, memBadge: 0, reqBadge: 0, version: '' };
 const app = $('#app');
 if (/Electron/.test(navigator.userAgent)) document.body.classList.add('desktop');
 const catOf = (id) => S.cats.find((c) => c.id === id) || { name: id, color: '#86868b' };
@@ -22,48 +23,28 @@ async function boot() {
   let played = false; try { played = !!sessionStorage.getItem('vit.intro'); sessionStorage.setItem('vit.intro', '1'); } catch { /* no storage */ }
   if (!played) runIntro({ short: !!store.get('vit.seen') && !!d.me });                 // the full welcome once, a short one on later launches
   store.set('vit.seen', '1');
-  if (!d.me) return welcome();
+  if (!d.me) return gate({ onIn: async () => { await load(); shell(); } });
   await load(); shell();
 }
 async function load() {
   const [st, jobs] = await Promise.all([api('/api/state'), api('/api/jobs')]);
-  Object.assign(S, { me: st.me, conv: st.conv, messages: st.messages, cats: st.cats, agents: st.agents, voice: st.voice, speak: st.speak, version: st.version });
+  Object.assign(S, { me: st.me, sub: st.sub, conv: st.conv, messages: st.messages, cats: st.cats, agents: st.agents, voice: st.voice, speak: st.speak, version: st.version });
   S.jobs = new Map(jobs.items.map((j) => [j.id, j])); if (st.theme) initTheme(st.theme);
 }
 const brand = () => h('span', { class: 'wordmark' }, 'VITON', h('sup', null, '13'));
 
-// ── sign-in ─────────────────────────────────────────────────────────────────
-function welcome() {
-  const err = h('div', { class: 'err', role: 'alert' });
-  const name = h('input', { class: 'field', placeholder: 'Как к вам обращаться?', autocomplete: 'given-name', maxlength: 40, 'aria-label': 'Ваше имя' });
-  const email = h('input', { class: 'field', type: 'email', placeholder: 'Почта VITON ID', autocomplete: 'username', 'aria-label': 'Почта VITON ID' });
-  const pass = h('input', { class: 'field', type: 'password', placeholder: 'Пароль', autocomplete: 'current-password', 'aria-label': 'Пароль' });
-  let mode = 'local';
-  const goBtn = h('button', { class: 'btn lg', type: 'submit' }, 'Войти');
-  const alt = h('button', { type: 'button', onclick: () => { mode = mode === 'local' ? 'viton' : 'local'; paint(); } });
-  const form = h('form', { onsubmit: async (e) => { e.preventDefault(); err.textContent = ''; goBtn.disabled = true;
-    try { if (mode === 'local') await api('/api/auth/local', { body: { name: name.value } }); else await api('/api/auth/viton', { body: { email: email.value, password: pass.value } }); await load(); shell(); }
-    catch (ex) { err.textContent = ex.message; goBtn.disabled = false; } } });
-  const altLine = h('div', { class: 'alt' });
-  function paint() { err.textContent = '';
-    form.replaceChildren(...(mode === 'local' ? [name] : [email, pass]), goBtn, err); goBtn.textContent = mode === 'local' ? 'Начать' : 'Войти';
-    altLine.replaceChildren(mode === 'local' ? 'Есть аккаунт? ' : 'Без аккаунта? ', alt); alt.textContent = mode === 'local' ? 'Войти через VITON ID' : 'Продолжить без входа'; }
-  app.replaceChildren(h('div', { class: 'welcome' }, h('div', { class: 'welcome-in glass' }, h('img', { class: 'mark', src: '/logo-mark.png', alt: '' }), brand(),
-    h('h1', null, 'Вход в экосистему'), h('p', { class: 'lead' }, 'VIT, VJOURNAL, Store, Медицина и Hub — под одним входом.'), form, altLine,
-    h('p', { class: 'fine' }, 'Открытый тест · память и диалоги хранятся на вашем компьютере'))));
-  paint();
-}
+const upgrade = (reason) => plansSheet({ me: S.me, reason });
 
 // ── shell ───────────────────────────────────────────────────────────────────
-const WORLD_TABS = [['home', 'Главная'], ['vit', 'VIT'], ['journal', 'VJOURNAL'], ['store', 'Store'], ['medicine', 'Медицина'], ['hub', 'Hub']];
+const WORLD_TABS = [['home', 'Главная'], ['vit', 'VIT'], ['brain', 'Мозг'], ['budget', 'Бюджет'], ['browser', 'Meridian'], ['journal', 'VJOURNAL'], ['store', 'Store'], ['medicine', 'Медицина'], ['hub', 'Hub']];
 const VIT_TABS = [['vit', 'Диалог'], ['memory', 'Память'], ['works', 'Работы'], ['requests', 'Заявки'], ['agents', 'Агенты']];
-const WORLDS = new Set(['journal', 'store', 'medicine', 'hub']), VIT_GROUP = new Set(VIT_TABS.map(([id]) => id));
+const WORLDS = new Set(['brain', 'budget', 'browser', 'journal', 'store', 'medicine', 'hub']), VIT_GROUP = new Set(VIT_TABS.map(([id]) => id));
 const KNOWN = new Set(['home', 'settings', ...VIT_GROUP, ...WORLDS]);
 let main, sub, tabsEl, vitView, current = null, tabEls = {}, subEls = {}, booted = false;
-const ctx = () => ({ h, icon, api, toast, when, md, css, esc, me: S.me, theme: getTheme, go: (v, arg, from) => go(v, false, arg, from), askVit: (text) => { go('vit'); vitView.send(text); } });
+const ctx = () => ({ h, icon, api, toast, when, md, css, esc, me: S.me, plan: S.me?.plan || 'guest', upgrade, theme: getTheme, go: (v, arg, from) => go(v, false, arg, from), askVit: (text) => { go('vit'); vitView.send(text); } });
 
 function shell() {
-  tabEls = Object.fromEntries(WORLD_TABS.map(([id, label]) => [id, h('button', { class: 'tab', onclick: () => go(id) }, icon(id), h('span', null, label))]));
+  tabEls = Object.fromEntries(WORLD_TABS.map(([id, label]) => [id, h('button', { class: 'tab', title: label, onclick: () => go(id) }, icon(id), h('span', { class: 'tl' }, label))]));
   subEls = Object.fromEntries(VIT_TABS.map(([id, label]) => [id, h('button', { class: 'subtab', onclick: () => go(id) }, label)]));
   main = h('main', { class: 'main' }); sub = h('div', { class: 'sub hide', 'aria-label': 'Разделы VIT' }, Object.values(subEls));
   app.replaceChildren(h('div', { class: 'shell' },
@@ -97,7 +78,8 @@ function go(view, fromHash, arg, origin) {
     for (const [id, el] of Object.entries(tabEls)) { const on = id === view || (id === 'vit' && inVit); el.classList.toggle('on', on); el.setAttribute('aria-current', on ? 'page' : 'false'); }
     for (const [id, el] of Object.entries(subEls)) el.classList.toggle('on', id === view);
     sub.classList.toggle('hide', !inVit); badges();
-    document.body.classList.toggle('bare', view === 'home' && getTheme() === 'spatial');            // the spatial home carries its own navigation, like a window in the room
+    document.body.classList.toggle('bare', view === 'home' && getTheme() === 'spatial');
+    document.body.classList.toggle('void', view === 'brain');                                        // the brain lives on pure black, edge to edge            // the spatial home carries its own navigation, like a window in the room
     slideTo(tabsEl, Object.values(tabEls).find((el) => el.classList.contains('on'))); slideTo(sub, subEls[view]);
     current?.destroy?.(); current?.root.remove(); current = null;
     vitView.root.classList.toggle('hide', view !== 'vit'); if (view === 'vit') { vitView.resume(); return vitView.focus(); } vitView.pause();
@@ -124,6 +106,21 @@ function live() {                                        // request statuses arr
     if (S.view === 'requests') go('requests'); };
 }
 async function askFirst() { if (S.busy) return; try { const d = await api('/api/pulse'); if (d.message && !S.busy) { S.messages.push(d.message); vitView.render(); } } catch { /* quiet */ } }
+
+// what the plan allows in the conversation: a quiet line under the greeting, a card instead of an answer when VIT is not included
+let planNoteEl = null;
+function planNote() { planNoteEl = h('div', { class: 'plan-note' }); paintPlanNote(); return planNoteEl; }
+function paintPlanNote() {
+  if (!planNoteEl) return; const sub = S.sub || {};
+  if (sub.plan === 'vit') return planNoteEl.replaceChildren();
+  planNoteEl.replaceChildren(icon('lock'), h('span', null, sub.plan === 'guest' ? (sub.trialLeft ? `Пробный режим: VIT ответит ещё ${sub.trialLeft} ${plural(sub.trialLeft, 'раз', 'раза', 'раз')}` : 'Пробные ответы закончились') : 'Ассистент VIT входит в подписку'),
+    h('button', { onclick: () => upgrade(sub.plan === 'guest' && !sub.trialLeft ? 'trial' : 'vit') }, sub.plan === 'guest' ? 'Что входит' : 'Подключить'));
+}
+const plural = (n, one, few, many) => { const a = n % 10, b = n % 100; return a === 1 && b !== 11 ? one : a >= 2 && a <= 4 && (b < 12 || b > 14) ? few : many; };
+function lockCard(err) {
+  return h('div', { class: 'lock-card' }, h('span', { class: 'lc-ic' }, icon('lock')), h('div', { class: 'grow' }, h('b', null, err.code === 'trial' ? 'Пробные ответы закончились' : 'VIT — по подписке'), h('small', null, err.message)),
+    h('button', { class: 'btn sm', onclick: () => upgrade(err.code === 'trial' ? 'trial' : 'vit') }, err.code === 'trial' ? 'Войти с VITON ID' : 'Подключить VIT'));
+}
 
 // ── VIT: the conversation ───────────────────────────────────────────────────
 function planEl(job) {
@@ -158,7 +155,7 @@ function buildVit() {
   const canvas = h('canvas', { 'aria-hidden': 'true' }), stateEl = h('div', { class: 'state', 'aria-live': 'polite' });
   const stage = h('div', { class: 'stage' }, canvas, stateEl), list = h('div', { class: 'list' });
   const SUGGEST = ['Хочу запустить арт-студию современной живописи', 'Найди свежие новости об ИИ-агентах', 'Сделай план продвижения сайта', 'Что ты обо мне помнишь?'];
-  const hello = h('div', { class: 'hello' }, h('h1', null, `Привет, ${S.me.name}.`), h('p', null, 'Поставьте цель — я доведу её до результата.'), h('div', { class: 'chips' }, SUGGEST.map((s) => h('button', { class: 'chip', onclick: () => send(s) }, s))));
+  const hello = h('div', { class: 'hello' }, h('h1', null, `Привет, ${S.me.name}.`), h('p', null, 'Поставьте цель — я доведу её до результата.'), h('div', { class: 'chips' }, SUGGEST.map((s) => h('button', { class: 'chip', onclick: () => send(s) }, s))), planNote());
   const thread = h('div', { class: 'thread scroll' }, h('div', { class: 'thread-in' }, hello, list));
   const input = h('textarea', { rows: 1, placeholder: matchMedia('(max-width: 480px)').matches ? 'Вопрос или цель' : 'Спросите VIT или поставьте цель', 'aria-label': 'Сообщение для VIT' });
   const mic = h('button', { class: 'round mic', title: 'Сказать голосом', 'aria-label': 'Сказать голосом', onclick: () => toggleMic() }, icon('mic'));
@@ -202,13 +199,13 @@ function buildVit() {
         else if (e.type === 'sources') sources = e.items;
         else if (e.type === 'plan') { job = e.job; S.jobs.set(job.id, job); planSlot.replaceChildren(planEl(job)); bottom(true); }
         else if (e.type === 'step' && job) { const s = job.steps[e.i]; s.status = e.status; if (e.file) s.file = e.file; planSlot.replaceChildren(planEl(job)); setState(e.status === 'run' ? `${s.name} работает` : ''); bottom(); }
-        else if (e.type === 'final') { final = e.message; S.messages.push(final); const el = msgEl(final); liveEl.replaceWith(el); liveEl = el; orb.state('idle'); setState(''); S.busy = false; busyUI(); bottom();
+        else if (e.type === 'final') { if (S.sub?.plan === 'guest' && S.sub.trialLeft > 0) { S.sub.trialLeft--; paintPlanNote(); } final = e.message; S.messages.push(final); const el = msgEl(final); liveEl.replaceWith(el); liveEl = el; orb.state('idle'); setState(''); S.busy = false; busyUI(); bottom();
           if (S.speak === 'always' || (S.speak === 'voice' && opt.voice)) speak(final.content); }
         else if (e.type === 'memory') { final && (final.meta.remembered = e.nodes); liveEl.querySelector('.meta')?.before(rememberedEl(e.nodes)); e.nodes.forEach((n, i) => setTimeout(() => orb.burst(S.cats.findIndex((c) => c.id === n.cat)), i * 380));
           if (S.view !== 'memory') { S.memBadge += e.nodes.length; badges(); } bottom(); }
         else if (e.type === 'error') { textEl.textContent = e.message; }
       }, abort.signal);
-    } catch (err) { if (!final) { textEl.textContent = err.name === 'AbortError' ? (acc ? acc + ' …' : job ? 'Остановил работу. То, что агенты успели сделать, лежит в разделе «Работы».' : 'Остановлено.') : 'Нет связи с VIT. Проверьте, что приложение запущено.';
+    } catch (err) { if (err.status === 402) { textEl.replaceChildren(lockCard(err)); final = true; } if (!final) { textEl.textContent = err.name === 'AbortError' ? (acc ? acc + ' …' : job ? 'Остановил работу. То, что агенты успели сделать, лежит в разделе «Работы».' : 'Остановлено.') : 'Нет связи с VIT. Проверьте, что приложение запущено.';
       if (job) { for (const s of job.steps) if (s.status === 'run') s.status = 'fail'; planSlot.replaceChildren(planEl(job)); } } }
     if (!final && job) api('/api/jobs').then((d) => { S.jobs = new Map(d.items.map((j) => [j.id, j])); }).catch(() => {});
     S.busy = false; busyUI(); if (!window.speechSynthesis?.speaking) orb.state('idle'); setState(''); abort = null;
@@ -397,10 +394,13 @@ function viewSettings(arg) {
     body.replaceChildren(h('div', { class: 'loading', style: 'min-height:160px' }, h('i')));
     try {
       if (tab === 'profile') body.replaceChildren(
-        h('div', { class: 'card' }, h('div', { class: 'row' }, h('span', { class: 'ava', style: 'width:46px;height:46px;font-size:17px' }, S.me.name[0].toUpperCase()), h('div', { class: 'grow' }, h('h3', null, S.me.name), h('p', { class: 'hint' }, S.me.kind === 'viton' ? `VITON ID · ${S.me.email}` : 'Локальный профиль — без аккаунта')),
+        h('div', { class: 'card' }, h('div', { class: 'row' }, h('span', { class: 'ava', style: 'width:46px;height:46px;font-size:17px' }, S.me.name[0].toUpperCase()), h('div', { class: 'grow' }, h('h3', null, S.me.name), h('p', { class: 'hint' }, S.me.kind === 'viton' ? `VITON ID · ${S.me.email}` : 'Гостевой режим — без аккаунта')),
           h('button', { class: 'btn sm ghost', onclick: async () => { await api('/api/auth/logout', { method: 'POST', body: {} }); location.hash = ''; location.reload(); } }, 'Выйти'))),
+        h('div', { class: 'card plan-card' }, h('div', { class: 'row', style: 'flex-wrap:wrap' }, h('div', { class: 'grow' }, h('span', { class: 'cap' }, 'Доступ'), h('h3', null, S.sub?.name || 'Гость'),
+          h('p', { class: 'hint' }, S.sub?.plan === 'vit' ? (S.sub.until ? `Подписка VIT до ${new Date(S.sub.until).toLocaleDateString('ru-RU')}` : 'Подписка VIT активна') : S.sub?.line || '')),
+          h('button', { class: 'btn sm' + (S.sub?.plan === 'vit' ? ' ghost' : ''), onclick: () => upgrade() }, S.sub?.plan === 'vit' ? 'Что входит' : S.sub?.plan === 'id' ? 'Подключить VIT' : 'Войти с VITON ID'))),
         h('div', { class: 'card' }, h('div', { class: 'row' }, h('div', { class: 'grow' }, h('h3', null, 'Тематика'), h('p', { class: 'hint' }, 'Пять обликов приложения. Меняется главная и все экраны.')), h('button', { class: 'btn sm', onclick: themeSheet }, 'Выбрать'))),
-        h('div', { class: 'card soft' }, h('h3', null, `VITON13 ${S.version} · открытый тест`), h('p', { class: 'hint' }, 'Приложение экосистемы VITON13. В тесте всё бесплатно; вход по VITON ID или без аккаунта.')));
+        h('div', { class: 'card soft' }, h('h3', null, `VITON13 ${S.version} · открытый тест`), h('p', { class: 'hint' }, 'Операционная система экосистемы VITON13: VIT, мозг, бюджет, браузер Meridian и миры.')));
       else if (tab === 'models') { const a = h('div', { class: 'card' }), b = h('div', { class: 'card' }); body.replaceChildren(a, b); ladder(a, await api('/api/models')); await catalog(b, a); }
       else if (tab === 'behave') { const s = await api('/api/settings');
         const tgToken = h('input', { class: 'field sm', type: 'password', placeholder: s.telegram.set ? 'Токен бота сохранён' : 'Токен бота', autocomplete: 'off', 'aria-label': 'Токен Telegram-бота' }), tgChat = h('input', { class: 'field sm', value: s.telegram.chat, placeholder: 'ID чата команды', 'aria-label': 'ID чата' });
