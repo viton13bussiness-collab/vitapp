@@ -12,7 +12,7 @@ const TYPES = new Set(['offer', 'answer', 'candidate', 'bye']);
 const CODES = {
   VITON_ID_REQUIRED: 'Войдите в VITON ID на viton13.com', ROOM_NOT_FOUND: 'Встреча не найдена или уже закончилась', ROOM_FULL: 'Во встрече уже шесть человек',
   NOT_A_MEMBER: 'Вы не во встрече', PERSON_NOT_IN_ROOM: 'Этот человек уже вышел', TOO_MANY_REQUESTS: 'Слишком часто. Подождите немного', PAYLOAD_TOO_LARGE: 'Слишком большое сообщение',
-  RTC_NOT_CONFIGURED: 'Встречи на viton13.com ещё не включены', RTC_UNAVAILABLE: 'Сервис встреч сейчас недоступен', CROSS_ORIGIN_REQUEST: 'Сайт не принял запрос', ORIGIN_REQUIRED: 'Сайт не принял запрос',
+  RTC_REJOIN: 'Переподключаемся к встрече…', RTC_NOT_CONFIGURED: 'Встречи на viton13.com ещё не включены', RTC_UNAVAILABLE: 'Сервис встреч сейчас недоступен', CROSS_ORIGIN_REQUEST: 'Сайт не принял запрос', ORIGIN_REQUIRED: 'Сайт не принял запрос',
 };
 
 /** STUN is free and public; a relay (TURN) helps the networks STUN can't cross and is added only when configured. */

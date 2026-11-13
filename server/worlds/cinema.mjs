@@ -16,7 +16,7 @@ const FILM_KINDS = new Set(['video', 'youtube', 'site', 'file', 'screen']);
 const CODES = {
   VITON_ID_REQUIRED: 'Войдите в VITON ID на viton13.com', ROOM_NOT_FOUND: 'Сеанс не найден, закончился или отменён', ROOM_FULL: 'В зале уже двенадцать человек',
   NOT_A_MEMBER: 'Вы не в зале', PERSON_NOT_IN_ROOM: 'Этот зритель уже вышел', TOO_MANY_REQUESTS: 'Слишком часто. Подождите немного', PAYLOAD_TOO_LARGE: 'Слишком большое сообщение',
-  RTC_NOT_CONFIGURED: 'Кинотеатр на viton13.com ещё не включён', RTC_UNAVAILABLE: 'Сервис кинотеатра сейчас недоступен', CROSS_ORIGIN_REQUEST: 'Сайт не принял запрос', ORIGIN_REQUIRED: 'Сайт не принял запрос',
+  RTC_REJOIN: 'Переподключаемся к залу…', RTC_NOT_CONFIGURED: 'Кинотеатр на viton13.com ещё не включён', RTC_UNAVAILABLE: 'Сервис кинотеатра сейчас недоступен', CROSS_ORIGIN_REQUEST: 'Сайт не принял запрос', ORIGIN_REQUIRED: 'Сайт не принял запрос',
   TITLE_REQUIRED: 'Назовите сеанс', INVALID_FILM: 'Нужна ссылка https:// на фильм — YouTube, сайт с плеером или файл .mp4 / .webm (не на этот компьютер и не в домашнюю сеть), или файл с Mac', INVALID_TIME: 'Время сеанса — от сегодня и не дальше двух месяцев', INVALID_HALL: 'Зал — от 3 до 8 рядов и от 6 до 12 мест',
   HOST_ONLY: 'Это может только тот, кто создал сеанс', NOT_ADMITTED: 'Сначала нужен билет', TICKET_NOT_FOUND: 'Такого билета нет', TICKET_USED: 'По этому билету уже вошли',
   SEAT_TAKEN: 'Это место уже занято', SEAT_RESERVED: 'Это место по чужому билету', SEAT_ASSIGNED: 'По билету у вас другое место', HALL_FULL: 'В зале уже двенадцать человек',

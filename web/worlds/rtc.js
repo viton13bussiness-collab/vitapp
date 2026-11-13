@@ -8,33 +8,68 @@
 // Each peer: { id, name, pc, dc, ready, offset (their clock − mine, ms), streams: Map }.
 export function createMesh({ api, base, me, local, ice, onPeer, onTrack, onMessage, onGone, onEnd, onState }) {
   const peers = new Map(), timers = new Set(), names = new Map(), extra = new Map();     // extra: streams added later (a shared screen)
-  let cursor = '', left = false, lastMembers = 0, lastActivity = Date.now(), videoLimit = null;
+  let cursor = '', left = false, lastMembers = 0, busyUntil = Date.now() + 20000, videoLimit = null, pollT = 0, polling = false, rejoining = null;
+  const listed = new Set(), waiting = new Map();                                        // members now inside · those listed without a connection yet (since when)
   const later = (fn, ms) => { const t = setTimeout(() => { timers.delete(t); fn(); }, ms); timers.add(t); };
   const post = (path, body) => api(base + path, { body });
-  const signal = (to, type, data) => post('/signal', { to, type, data: typeof data === 'string' ? data : JSON.stringify(data) }).catch(() => {});
+  const signal = async (to, type, data) => {
+    const body = { to, type, data: typeof data === 'string' ? data : JSON.stringify(data) };
+    try { await post('/signal', body); } catch (e) { if (e.code === 'RTC_REJOIN') { await rejoin(); await post('/signal', body).catch(() => {}); } }
+  };
   const gathered = (pc, ms = 2500) => new Promise((res) => { if (pc.iceGatheringState === 'complete') return res(); const t = setTimeout(res, ms); pc.addEventListener('icegatheringstatechange', () => { if (pc.iceGatheringState === 'complete') { clearTimeout(t); res(); } }); });
 
+  // The poll is fast (1 s) while anyone is still connecting and for the first 20 s; once every member is connected
+  // (and the data channel open) it only looks for newcomers every 20 s. A drop, a newcomer, a renegotiation or the
+  // window coming back wakes it up at once; alone in the room, every 5 s so the first guest isn't kept waiting.
+  // Polling costs the site nothing in Firestore, but it is still a request.
+  function settled() {
+    const now = Date.now();
+    if (now < busyUntil) return false;
+    for (const p of peers.values()) {
+      const st = p.pc.connectionState; if (st === 'failed' || st === 'closed') continue;   // a failed peer is dropped on its own; it does not keep us fast
+      if (st !== 'connected' || p.dc?.readyState !== 'open' || p.making || p.pc.signalingState !== 'stable') return false;
+    }
+    for (const since of waiting.values()) if (now - since < 30000) return false;         // someone listed who has not reached us yet
+    return true;
+  }
+  function schedule(ms) { clearTimeout(pollT); timers.delete(pollT); pollT = setTimeout(() => { timers.delete(pollT); pollT = 0; poll(); }, ms); timers.add(pollT); }
+  function wake(ms = 5000) { if (left) return; busyUntil = Math.max(busyUntil, Date.now() + ms); if (!polling) schedule(150); }
   async function poll() {
     if (left) return;
-    const settled = peers.size > 0 && [...peers.values()].every((p) => p.pc.connectionState === 'connected') && Date.now() - lastActivity > 20000;
-    const wantMembers = Date.now() - lastMembers > (settled ? 15000 : 5000);
+    polling = true;
+    const calm = settled(), wantMembers = calm || Date.now() - lastMembers > 5000;
     try {
       const d = await api(`${base}/signal?since=${encodeURIComponent(cursor)}${wantMembers ? '&members=1' : ''}`);
-      for (const s of d.signals || []) { cursor = s.createdAt; lastActivity = Date.now(); await onSignal(s).catch((e) => console.warn('[rtc] signal', e)); }
+      for (const s of d.signals || []) { cursor = s.createdAt; busyUntil = Math.max(busyUntil, Date.now() + 5000); await onSignal(s).catch((e) => console.warn('[rtc] signal', e)); }
       if (d.members) { lastMembers = Date.now(); members(d.members); }
     } catch (e) {
-      if (e.status === 403) await rejoin();
-      else if (e.status === 404) { onEnd?.('ended'); return leave(true); }
+      if (e.code === 'RTC_REJOIN' || e.status === 403) await rejoin();                // the site forgot us (a restart): join again, the calls go on
+      else if (e.status === 404) { polling = false; onEnd?.('ended'); return leave(true); }
     }
-    const settling = [...peers.values()].some((p) => p.pc.connectionState !== 'connected') || Date.now() - lastActivity < 20000;
-    later(poll, settling ? 900 : document.hidden ? 8000 : 5000);                          // an introduction in progress stays fast even in a hidden window
+    polling = false;
+    if (!left) schedule(!settled() ? 1000 : peers.size ? 20000 : 5000);                // an introduction in progress stays fast even in a hidden window
   }
-  async function rejoin() { try { await post('/presence', { action: 'join' }); } catch (e) { if (e.status === 403) { onEnd?.('kicked'); leave(true); } } }
-  const beat = setInterval(() => { if (!left) post('/presence', { action: 'heartbeat' }).catch((e) => { if (e.status === 403) rejoin(); }); }, 120000);
+  /** Join again quietly: live connections stay as they are. Refused with 403 — the host sent us out. */
+  function rejoin() {
+    return (rejoining ||= post('/presence', { action: 'join' }).then(() => wake())
+      .catch((e) => { if (e.status === 403) { onEnd?.('kicked'); leave(true); } else if (e.status === 404) { onEnd?.('ended'); leave(true); } })
+      .finally(() => { rejoining = null; }));
+  }
+  const beat = setInterval(() => { if (!left) post('/presence', { action: 'heartbeat' }).catch((e) => { if (e.status === 403 || e.code === 'RTC_REJOIN') rejoin(); }); }, 120000);
+  const onVisible = () => { if (!document.hidden) wake(); };
+  document.addEventListener('visibilitychange', onVisible);
 
   function members(list) {
-    for (const m of list) { names.set(m.id, m); const p = peers.get(m.id); if (p && m.name && p.name !== m.name) { p.name = m.name; onState?.(p); } }
+    const now = Date.now(); let fresh = false;
+    for (const m of list) {
+      names.set(m.id, m); const p = peers.get(m.id); if (p && m.name && p.name !== m.name) { p.name = m.name; onState?.(p); }
+      if (m.id !== me.id && !listed.has(m.id)) { listed.add(m.id); fresh = true; }
+      if (m.id !== me.id && !p && !waiting.has(m.id)) waiting.set(m.id, now);
+    }
+    for (const id of [...listed]) if (!list.some((m) => m.id === id)) listed.delete(id);
+    for (const id of [...waiting.keys()]) if (peers.has(id) || !listed.has(id)) waiting.delete(id);
     for (const [id, p] of peers) if (!list.some((m) => m.id === id) && p.pc.connectionState !== 'connected') drop(id);
+    if (fresh) wake(20000);                                                             // a newcomer: stay quick while they connect
   }
   async function onSignal(s) {
     const data = (() => { try { return JSON.parse(s.data); } catch { return null; } })();
@@ -66,10 +101,11 @@ export function createMesh({ api, base, me, local, ice, onPeer, onTrack, onMessa
     pc.ondatachannel = (e) => wire(p, e.channel);
     pc.onnegotiationneeded = async () => {
       if (!p.ready) return;                                                             // the first offer goes through the site
+      wake();                                                                           // a screen or a file joins the call: keep an ear on the site meanwhile
       try { p.making = true; await pc.setLocalDescription(); send(p.id, { k: 'sdp', d: pc.localDescription }); } catch (e) { console.warn('[rtc] renegotiate', e); } finally { p.making = false; }
     };
     pc.onicecandidate = (e) => { if (p.ready && e.candidate) send(p.id, { k: 'ice', c: e.candidate }); };
-    pc.onconnectionstatechange = () => { onState?.(p); if (pc.connectionState === 'failed') later(() => { if (pc.connectionState === 'failed') drop(p.id); }, 12000); if (pc.connectionState === 'connected') applyLimit(p); };
+    pc.onconnectionstatechange = () => { onState?.(p); if (pc.connectionState !== 'connected') wake(); else waiting.delete(p.id); if (pc.connectionState === 'failed') later(() => { if (pc.connectionState === 'failed') drop(p.id); }, 12000); if (pc.connectionState === 'connected') applyLimit(p); };
     onPeer?.(p); return p;
   }
   function wire(p, dc) {
@@ -93,6 +129,7 @@ export function createMesh({ api, base, me, local, ice, onPeer, onTrack, onMessa
   function drop(id, quietly) {
     const p = peers.get(id); if (!p) return;
     peers.delete(id); try { p.pc.close(); } catch { /* closed */ }
+    waiting.delete(id); wake();
     onGone?.(p, quietly);
   }
   const send = (id, m) => { const p = peers.get(id); if (p?.dc?.readyState === 'open') p.dc.send(JSON.stringify(m)); };
@@ -121,7 +158,7 @@ export function createMesh({ api, base, me, local, ice, onPeer, onTrack, onMessa
 
   async function leave(ended) {
     if (left) return; left = true;
-    broadcast({ k: 'bye' }); clearInterval(beat); timers.forEach(clearTimeout);
+    broadcast({ k: 'bye' }); clearInterval(beat); timers.forEach(clearTimeout); document.removeEventListener('visibilitychange', onVisible);
     for (const id of [...peers.keys()]) drop(id, true);
     if (!ended) fetch(base + '/presence', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'leave' }), keepalive: true }).catch(() => {});
   }
@@ -130,11 +167,12 @@ export function createMesh({ api, base, me, local, ice, onPeer, onTrack, onMessa
     peers, send, broadcast, addStream, removeStream, leave,
     /** Join done by the caller; the newcomer calls everyone who was inside before it. */
     start(list, myJoinedAt) { cursor = `${myJoinedAt}#0`;                              // offers left for an earlier visit are stale: read only what comes after joining
-      members(list); for (const m of list) if (m.id !== me.id && String(m.joinedAt) < String(myJoinedAt)) call(m).catch((e) => console.warn('[rtc] call', e)); poll(); },
+      members(list); for (const m of list) if (m.id !== me.id && (String(m.joinedAt) < String(myJoinedAt) || (m.joinedAt === myJoinedAt && m.id < me.id))) call(m).catch((e) => console.warn('[rtc] call', e)); poll(); },
     setVideoLimit(bps, opts = {}) { videoLimit = { bps, ...opts }; for (const p of peers.values()) applyLimit(p); },
     /** Their clock in my time: a message stamped `at` by peer p happened at at − p.offset here. */
     localTime: (p, at) => at - (p?.offset || 0),
     debug: () => [...peers.values()].map((p) => ({ id: p.id, name: p.name, conn: p.pc.connectionState, dc: p.dc?.readyState, offset: Math.round(p.offset) })),
+    pace: () => ({ settled: settled(), busyFor: Math.max(0, busyUntil - Date.now()), waiting: [...waiting.keys()] }),
   };
 }
 

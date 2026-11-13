@@ -1,19 +1,20 @@
 import { validateMutationRequest } from "@/lib/http-security";
-import { liveMembers, roomIsOpen, maxMembers } from "@/lib/rtc-rooms.mjs";
+import { roomIsOpen, maxMembers } from "@/lib/rtc-rooms.mjs";
 import { cinemaExpiry, isCinema, normalizeScreening, publicScreening } from "@/lib/rtc-cinema.mjs";
+import { memoryMembers, setMemoryExpiry } from "@/lib/rtc-memory.mjs";
 import { error, json, requireCaller } from "./_shared";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** What the lobby shows before joining: the title and who is already inside. A cinema shows its screening and seats. */
+/** What the lobby shows before joining: the title and who is already inside (from memory). A cinema shows its screening and seats. */
 export async function GET(_request, { params }) {
   const state = await requireCaller(params);
   if (state.error) return state.error;
   const snap = await state.ref.get();
   const room = snap.exists ? snap.data() : null;
   if (!roomIsOpen(room)) return error("ROOM_NOT_FOUND", 404);
-  const members = liveMembers(room);
+  const members = memoryMembers(state.code);
   if (isCinema(room)) return json({ ok: true, room: { ...publicScreening(room, state.user.id), members } });
   return json({ ok: true, room: { code: state.code, title: room.title || "", hostId: room.hostId, members, full: members.length >= maxMembers(room) } });
 }
@@ -46,6 +47,7 @@ export async function PATCH(request, { params }) {
     if (out.code === "ROOM_NOT_FOUND") return error("ROOM_NOT_FOUND", 404);
     if (out.code === "HOST_ONLY") return error("HOST_ONLY", 403);
     if (out.code) return error(out.code, 400);
+    setMemoryExpiry(state.code, out.room.expiresAt.getTime());
     return json({ ok: true, room: publicScreening(out.room, state.user.id) });
   } catch {
     return error("RTC_UNAVAILABLE", 503);

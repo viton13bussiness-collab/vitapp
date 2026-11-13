@@ -1,9 +1,10 @@
 // Rooms for VITON13 meetings: the site only introduces people to each other.
 //
 // Video and sound never pass through the site — they go straight between the
-// participants' devices (WebRTC). The site keeps a small room document and a
-// short-lived inbox per member where the devices leave each other their
-// connection offers. Everything expires by itself (Firestore TTL on expiresAt).
+// participants' devices (WebRTC). The site keeps a small room document in
+// Firestore (expires by itself: TTL on expiresAt) and, in the server's memory,
+// who is inside and a short-lived inbox per member where the devices leave each
+// other their connection offers (lib/rtc-memory.mjs).
 
 import { randomInt } from "node:crypto";
 
@@ -14,6 +15,7 @@ export const RTC_MAX_MEMBERS = 6;
 /** A meeting holds six; a cinema hall twelve (see lib/rtc-cinema.mjs). */
 export const maxMembers = (room) => (room?.kind === "cinema" ? 12 : RTC_MAX_MEMBERS);
 export const RTC_ROOM_TTL_MS = 12 * 60 * 60 * 1000;
+/** A signal waits for its reader at most this long. */
 export const RTC_SIGNAL_TTL_MS = 10 * 60 * 1000;
 /** A member who has not been seen for this long is no longer listed. */
 export const RTC_MEMBER_STALE_MS = 5 * 60 * 1000;
@@ -75,8 +77,8 @@ export function pollAllowed(key, limit = 240, windowMs = 60_000) {
   const now = Date.now();
   const b = buckets.get(key);
   if (!b || now - b.at > windowMs) {
-    buckets.set(key, { at: now, n: 1 });
-    if (buckets.size > 5000) for (const [k, v] of buckets) if (now - v.at > windowMs) buckets.delete(k);
+    buckets.set(key, { at: now, n: 1, w: windowMs });
+    if (buckets.size > 5000) for (const [k, v] of buckets) if (now - v.at > v.w) buckets.delete(k);
     return true;
   }
   b.n += 1;

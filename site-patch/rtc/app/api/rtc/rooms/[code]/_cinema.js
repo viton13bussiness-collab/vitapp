@@ -2,6 +2,7 @@
 // lib/rtc-cinema.mjs decide, write what it returns, answer with what this person may see.
 import { roomIsOpen } from "@/lib/rtc-rooms.mjs";
 import { isCinema, publicScreening } from "@/lib/rtc-cinema.mjs";
+import { pruneMemory } from "@/lib/rtc-memory.mjs";
 import { error, json } from "./_shared";
 
 const STATUS = { ROOM_NOT_FOUND: 404, TICKET_NOT_FOUND: 404, HOST_ONLY: 403, NOT_ADMITTED: 403, SEAT_TAKEN: 409, SEAT_RESERVED: 409, SEAT_ASSIGNED: 409, HALL_FULL: 409, TICKET_USED: 409, SEAT_HAS_TICKET: 409 };
@@ -22,6 +23,9 @@ export async function cinemaTransaction(state, rule, { hostOnly = false } = {}) 
       return { room: { ...room, ...update }, extra: { ...(extra || {}), ...(r.made ? { made: r.made } : {}) } };
     });
     if (out.code) return error(out.code, STATUS[out.code] || 400);
+    // someone sent out or whose ticket was taken back leaves the live hall too; their next poll hears RTC_REJOIN, and joining again fails
+    const room = out.room;
+    pruneMemory(state.code, (uid) => !room.banned?.[uid] && (uid === room.hostId || Boolean(room.admitted?.[uid])));
     return json({ ok: true, room: publicScreening(out.room, state.user.id), ...out.extra });
   } catch {
     return error("RTC_UNAVAILABLE", 503);

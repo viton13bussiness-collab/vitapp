@@ -174,13 +174,14 @@ export default function view(ctx, arg) {
     const myJoin = joined.members.find((m) => m.id === me.id)?.joinedAt || new Date().toISOString();
     const local = lobbyStream || await localMedia(pref.camId, pref.micId, me.name); lobbyStream = null;
     room = createRoom({ code, title: info?.title || '', me, local, pref, ice: ST.ice });
-    for (const m of joined.members) if (m.id !== me.id && String(m.joinedAt) < String(myJoin)) room.call(m);       // the newcomer calls everyone already inside
+    for (const m of joined.members) if (m.id !== me.id && (String(m.joinedAt) < String(myJoin) || (m.joinedAt === myJoin && m.id < me.id))) room.call(m);       // the newcomer calls everyone already inside
     room.members(joined.members);
   }
 
   function createRoom({ code, title, me, local, pref, ice }) {
     const peers = new Map(), timers = new Set();
-    let cursor = '', left = false, lastMembers = 0, lastActivity = Date.now(), screen = null, unread = 0, chatOpen = false;
+    let cursor = '', left = false, lastMembers = 0, busyUntil = Date.now() + 20000, pollT = 0, polling = false, rejoining = null, screen = null, unread = 0, chatOpen = false;
+    const listed = new Set(), waiting = new Map();                                    // members now inside · those listed without a connection yet (since when)
     const state = { mic: pref.mic, cam: pref.cam };
     let stageMode = 'none', stageOwner = null, film = null, player = null, applying = 0, beatT = null, lastWatch = null;
     for (const t of local.getAudioTracks()) t.enabled = state.mic;
@@ -207,29 +208,57 @@ export default function view(ctx, arg) {
     paintCtl(); relayout();
 
     // ── signalling through the site ──
-    const send = (to, type, data) => api(`/api/meet/rooms/${code}/signal`, { body: { to, type, data: typeof data === 'string' ? data : JSON.stringify(data) } }).catch((e) => toast(e.message));
+    const send = async (to, type, data) => {
+      const body = { to, type, data: typeof data === 'string' ? data : JSON.stringify(data) }, go = () => api(`/api/meet/rooms/${code}/signal`, { body });
+      try { await go(); } catch (e) { if (e.code !== 'RTC_REJOIN') return toast(e.message); await rejoin(); await go().catch((er) => toast(er.message)); }   // the site restarted: join again, then send
+    };
     const gathered = (pc, ms = 2500) => new Promise((res) => { if (pc.iceGatheringState === 'complete') return res(); const t = setTimeout(res, ms); pc.addEventListener('icegatheringstatechange', () => { if (pc.iceGatheringState === 'complete') { clearTimeout(t); res(); } }); });
+    // Fast (1 s) while anyone is still connecting and for the first 20 s; once everyone is connected with the data
+    // channel open, a look for newcomers every 20 s (alone: every 5 s). A drop, a newcomer, a renegotiation or the window coming back wakes it.
+    function settled() {
+      const now = Date.now();
+      if (now < busyUntil) return false;
+      for (const p of peers.values()) {
+        const st = p.pc.connectionState; if (st === 'failed' || st === 'closed') continue;
+        if (st !== 'connected' || p.dc?.readyState !== 'open' || p.making || p.pc.signalingState !== 'stable') return false;
+      }
+      for (const since of waiting.values()) if (now - since < 30000) return false;
+      return true;
+    }
+    function schedule(ms) { clearTimeout(pollT); timers.delete(pollT); pollT = setTimeout(() => { timers.delete(pollT); pollT = 0; poll(); }, ms); timers.add(pollT); }
+    function wake(ms = 5000) { if (left) return; busyUntil = Math.max(busyUntil, Date.now() + ms); if (!polling) schedule(150); }
     async function poll() {
       if (left || !alive) return;
-      const settled = peers.size > 0 && [...peers.values()].every((p) => p.pc.connectionState === 'connected') && Date.now() - lastActivity > 20000;
-      const wantMembers = Date.now() - lastMembers > (settled ? 15000 : 5000);         // the member list costs the site a read: ask for it rarely once everyone is in
+      polling = true;
+      const calm = settled(), wantMembers = calm || Date.now() - lastMembers > 5000;
       try {
         const d = await api(`/api/meet/rooms/${code}/signal?since=${encodeURIComponent(cursor)}${wantMembers ? '&members=1' : ''}`);
-        for (const s of d.signals || []) { cursor = s.createdAt; lastActivity = Date.now(); await onSignal(s).catch((e) => console.warn('[meet] signal', e)); }
+        for (const s of d.signals || []) { cursor = s.createdAt; busyUntil = Math.max(busyUntil, Date.now() + 5000); await onSignal(s).catch((e) => console.warn('[meet] signal', e)); }
         if (d.members) { lastMembers = Date.now(); members(d.members); }
       } catch (e) {
-        if (e.status === 404 || e.status === 403) { if (e.status === 403) await rejoin(); else { toast('Встреча закончилась'); return leave(true); } }
+        if (e.code === 'RTC_REJOIN' || e.status === 403) await rejoin();               // the site forgot us (a restart): join again, the call goes on
+        else if (e.status === 404) { polling = false; toast('Встреча закончилась'); return leave(true); }
       }
-      const settling = [...peers.values()].some((p) => p.pc.connectionState !== 'connected') || Date.now() - lastActivity < 20000;
-      later(poll, document.hidden ? 8000 : settling ? 900 : 5000);
+      polling = false;
+      if (!left) schedule(!settled() ? 1000 : peers.size ? 20000 : 5000);
     }
     const later = (fn, ms) => { const t = setTimeout(() => { timers.delete(t); fn(); }, ms); timers.add(t); };
-    async function rejoin() { try { await api(`/api/meet/rooms/${code}/presence`, { body: { action: 'join' } }); } catch { /* the next poll will tell */ } }
-    const beat = setInterval(() => { if (!left) api(`/api/meet/rooms/${code}/presence`, { body: { action: 'heartbeat' } }).catch((e) => { if (e.status === 403) rejoin(); }); }, 120000);
+    function rejoin() { return (rejoining ||= api(`/api/meet/rooms/${code}/presence`, { body: { action: 'join' } }).then(() => wake()).catch(() => { /* the next poll will tell */ }).finally(() => { rejoining = null; })); }
+    const beat = setInterval(() => { if (!left) api(`/api/meet/rooms/${code}/presence`, { body: { action: 'heartbeat' } }).catch((e) => { if (e.status === 403 || e.code === 'RTC_REJOIN') rejoin(); }); }, 120000);
+    const onVisible = () => { if (!document.hidden) wake(); };
+    document.addEventListener('visibilitychange', onVisible);
     const names = new Map();
     function members(list) {
-      for (const m of list) { names.set(m.id, m); const p = peers.get(m.id); if (p && m.name && p.name !== m.name) { p.name = m.name; p.tile.setName(m.name); } }
+      const now = Date.now(); let fresh = false;
+      for (const m of list) {
+        names.set(m.id, m); const p = peers.get(m.id); if (p && m.name && p.name !== m.name) { p.name = m.name; p.tile.setName(m.name); }
+        if (m.id !== me.id && !listed.has(m.id)) { listed.add(m.id); fresh = true; }
+        if (m.id !== me.id && !p && !waiting.has(m.id)) waiting.set(m.id, now);
+      }
+      for (const id of [...listed]) if (!list.some((m) => m.id === id)) listed.delete(id);
+      for (const id of [...waiting.keys()]) if (peers.has(id) || !listed.has(id)) waiting.delete(id);
       for (const [id, p] of peers) if (!list.some((m) => m.id === id) && p.pc.connectionState !== 'connected') dropPeer(id);
+      if (fresh) wake(20000);
       head.querySelector('.mt-head-n').textContent = `${peers.size + 1} из 6`;
     }
     async function onSignal(s) {
@@ -263,11 +292,12 @@ export default function view(ctx, arg) {
       pc.ondatachannel = (e) => wire(p, e.channel);
       pc.onnegotiationneeded = async () => {
         if (!p.ready) return;                                                          // the first offer goes through the site
+        wake();                                                                        // a shared screen joins the call: keep an ear on the site meanwhile
         try { p.making = true; await pc.setLocalDescription(); dcSend(p, { k: 'sdp', d: pc.localDescription }); } catch (e) { console.warn('[meet] renegotiate', e); } finally { p.making = false; }
       };
       pc.onicecandidate = (e) => { if (p.ready && e.candidate) dcSend(p, { k: 'ice', c: e.candidate }); };
       pc.onconnectionstatechange = () => {
-        p.tile.el.dataset.conn = pc.connectionState;
+        p.tile.el.dataset.conn = pc.connectionState; if (pc.connectionState !== 'connected') wake(); else waiting.delete(p.id);
         if (pc.connectionState === 'failed') { p.tile.setNote('Нет связи — возможно, мешает сеть'); later(() => { if (pc.connectionState === 'failed') dropPeer(p.id); }, 12000); }
         if (pc.connectionState === 'connected') p.tile.setNote('');
       };
@@ -306,7 +336,7 @@ export default function view(ctx, arg) {
     }
     function dropPeer(id, quietly) {
       const p = peers.get(id); if (!p) return;
-      peers.delete(id); try { p.pc.close(); } catch { /* closed */ } p.tile.destroy(); p.tile.el.remove();
+      peers.delete(id); try { p.pc.close(); } catch { /* closed */ } p.tile.destroy(); p.tile.el.remove(); waiting.delete(id); wake();
       if (p.screenId && stageOwner === id) clearStage();
       if (film?.leader === id) { const next = [me.id, ...peers.keys()].sort()[0]; film.leader = next; if (next === me.id) startBeat(); }
       relayout(); bitrate(); head.querySelector('.mt-head-n').textContent = `${peers.size + 1} из 6`;
@@ -471,7 +501,7 @@ export default function view(ctx, arg) {
     // ── leaving ──
     async function leave(ended) {
       if (left) return; left = true;
-      broadcast({ k: 'bye' }); clearInterval(beat); clearInterval(beatT); timers.forEach(clearTimeout);
+      broadcast({ k: 'bye' }); clearInterval(beat); clearInterval(beatT); timers.forEach(clearTimeout); document.removeEventListener('visibilitychange', onVisible);
       for (const id of [...peers.keys()]) dropPeer(id, true);
       local.getTracks().forEach((t) => t.stop()); screen?.getTracks().forEach((t) => t.stop()); fakeStop?.(); selfTile.destroy(); player?.destroy(); actx?.close().catch(() => {});
       if (!ended) fetch(`/api/meet/rooms/${code}/presence`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'leave' }), keepalive: true }).catch(() => {});
@@ -479,7 +509,7 @@ export default function view(ctx, arg) {
     }
     const onUnload = () => leave(); window.addEventListener('pagehide', onUnload);
     poll();
-    return { call: (m) => call(m).catch((e) => toast(e.message)), members, leave: () => { window.removeEventListener('pagehide', onUnload); return leave(); }, peers, debug: () => ({ me, peers: [...peers.values()].map((p) => ({ id: p.id, conn: p.pc.connectionState, dc: p.dc?.readyState, offset: p.offset })), film: film && { ...film, t: player?.time(), playing: player?.playing() } }) };
+    return { call: (m) => call(m).catch((e) => toast(e.message)), members, leave: () => { window.removeEventListener('pagehide', onUnload); return leave(); }, peers, debug: () => ({ me, pace: { settled: settled(), busyFor: Math.max(0, busyUntil - Date.now()), waiting: [...waiting.keys()] }, peers: [...peers.values()].map((p) => ({ id: p.id, conn: p.pc.connectionState, dc: p.dc?.readyState, offset: p.offset })), film: film && { ...film, t: player?.time(), playing: player?.playing() } }) };
   }
 
   function loadYT() {

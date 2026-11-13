@@ -8,8 +8,8 @@ import {
   RTC_MAX_TITLE,
   RTC_ROOM_TTL_MS,
   newRoomCode,
-  toPublicMember,
 } from "@/lib/rtc-rooms.mjs";
+import { joinMemory } from "@/lib/rtc-memory.mjs";
 import { cinemaExpiry, issueTickets, normalizeScreening, publicScreening } from "@/lib/rtc-cinema.mjs";
 
 export const runtime = "nodejs";
@@ -46,7 +46,6 @@ export async function POST(request) {
   const now = new Date();
   const iso = now.toISOString();
   if (payload?.kind === "cinema") return createCinema(db, user, payload, now);
-  const me = { name: user.name || "", vitonId: user.vitonId || "", avatarUrl: user.avatarUrl || "", joinedAt: iso, seenAt: iso };
 
   // A fresh code; `create` fails if it is taken, so a collision just tries again.
   for (let attempt = 0; attempt < 5; attempt += 1) {
@@ -58,9 +57,10 @@ export async function POST(request) {
         hostId: user.id,
         createdAt: iso,
         expiresAt: new Date(now.getTime() + RTC_ROOM_TTL_MS),
-        members: { [user.id]: me },
       });
-      return json({ ok: true, room: { code, title, hostId: user.id, members: [toPublicMember(user.id, me)] }, me: { id: user.id, name: me.name } }, { status: 201 });
+      // who is inside lives in the server's memory (lib/rtc-memory.mjs), not in the document
+      const joined = joinMemory(code, user, { expiresAt: now.getTime() + RTC_ROOM_TTL_MS }, now.getTime());
+      return json({ ok: true, room: { code, title, hostId: user.id, members: joined.members || [] }, me: { id: user.id, name: user.name || "" } }, { status: 201 });
     } catch (e) {
       if (e?.code !== 6 && !/already exists/i.test(String(e?.message || ""))) return error("RTC_UNAVAILABLE", 503);
     }

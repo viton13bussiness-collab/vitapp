@@ -1,9 +1,9 @@
-import { FieldValue } from "firebase-admin/firestore";
 import { consumeRateLimit } from "@/lib/firebase/rate-limit";
 import { validateMutationRequest } from "@/lib/http-security";
-import { liveMembers, roomIsOpen, maxMembers, RTC_MEMBER_STALE_MS } from "@/lib/rtc-rooms.mjs";
+import { maxMembers, roomIsOpen } from "@/lib/rtc-rooms.mjs";
 import { isCinema, mayJoinHall } from "@/lib/rtc-cinema.mjs";
-import { error, json, requireCaller } from "../_shared";
+import { joinMemory, leaveMemory, memoryMembers, touchMemory } from "@/lib/rtc-memory.mjs";
+import { error, expiryMs, json, requireCaller } from "../_shared";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,9 +11,10 @@ export const dynamic = "force-dynamic";
 /**
  * join · heartbeat · leave.
  *
- * The heartbeat is sparse on purpose (every two minutes from the app): the
- * devices already know from their own connection whether the others are there;
- * the room only needs to know it well enough to introduce a newcomer.
+ * Only join looks at Firestore: one read of the room (open, not cancelled, a
+ * seat in the cinema) and the rate-limit counter. Who is inside lives in the
+ * server's memory (lib/rtc-memory.mjs), so the heartbeat — every two minutes
+ * from the app — and leaving cost nothing.
  */
 export async function POST(request, { params }) {
   const requestError = validateMutationRequest(request, { maxBytes: 256 });
@@ -29,54 +30,36 @@ export async function POST(request, { params }) {
   }
   const action = String(payload?.action || "");
   if (!["join", "heartbeat", "leave"].includes(action)) return error("INVALID_REQUEST", 400);
+  const { user, code } = state;
+  const me = { id: user.id, name: user.name || "" };
 
-  if (action === "join") {
-    const budget = await consumeRateLimit({ scope: "rtc-room-join", key: state.user.id, limit: 60, windowMs: 60 * 60 * 1000 }).catch(() => null);
-    if (!budget) return error("RATE_LIMIT_UNAVAILABLE", 503);
-    if (!budget.allowed) return error("TOO_MANY_REQUESTS", 429);
+  if (action === "leave") return json({ ok: true, me, members: leaveMemory(code, user.id) });
+  if (action === "heartbeat") {
+    const seen = touchMemory(code, user.id);
+    if (seen === "expired") return error("ROOM_NOT_FOUND", 404);
+    // unknown here (the server restarted, or the person went quiet too long): the app joins again
+    if (seen !== "ok") return error("RTC_REJOIN", 409);
+    return json({ ok: true, me, members: memoryMembers(code) });
   }
 
-  const nowMs = Date.now();
-  const now = new Date(nowMs).toISOString();
-  const { user, ref } = state;
+  const budget = await consumeRateLimit({ scope: "rtc-room-join", key: user.id, limit: 60, windowMs: 60 * 60 * 1000 }).catch(() => null);
+  if (!budget) return error("RATE_LIMIT_UNAVAILABLE", 503);
+  if (!budget.allowed) return error("TOO_MANY_REQUESTS", 429);
 
+  let room;
   try {
-    const result = await state.db.runTransaction(async (tx) => {
-      const snap = await tx.get(ref);
-      const room = snap.exists ? snap.data() : null;
-      if (!roomIsOpen(room, nowMs)) return { code: "ROOM_NOT_FOUND" };
-      const members = liveMembers(room, nowMs);
-      const inside = members.some((m) => m.id === user.id);
-
-      if (action === "leave") {
-        if (inside) tx.update(ref, { [`members.${user.id}`]: FieldValue.delete() });
-        return { members: members.filter((m) => m.id !== user.id) };
-      }
-      if (action === "heartbeat") {
-        if (!inside) return { code: "NOT_A_MEMBER" };
-        tx.update(ref, { [`members.${user.id}.seenAt`]: now });
-        return { members };
-      }
-      // join: a seat for a newcomer; coming back after a reload takes a fresh seat.
-      // In a cinema only the host and people sitting on a seat come into the hall's call.
-      if (isCinema(room) && room.screening?.cancelled) return { code: "ROOM_NOT_FOUND" };
-      if (isCinema(room) && !mayJoinHall(room, user.id)) return { code: "NO_SEAT" };
-      if (!inside && members.length >= maxMembers(room)) return { code: "ROOM_FULL" };
-      const update = { [`members.${user.id}`]: { name: user.name || "", vitonId: user.vitonId || "", avatarUrl: user.avatarUrl || "", joinedAt: now, seenAt: now } };
-      // members who went quiet are tidied away while we are here
-      for (const [id, m] of Object.entries(room.members || {})) {
-        if (id !== user.id && nowMs - Date.parse(m?.seenAt || m?.joinedAt || 0) >= RTC_MEMBER_STALE_MS) update[`members.${id}`] = FieldValue.delete();
-      }
-      tx.update(ref, update);
-      const me = { id: user.id, name: user.name || "", vitonId: user.vitonId || "", avatarUrl: user.avatarUrl || "", joinedAt: now };
-      return { members: [...members.filter((m) => m.id !== user.id), me] };
-    });
-    if (result.code === "ROOM_NOT_FOUND") return error("ROOM_NOT_FOUND", 404);
-    if (result.code === "ROOM_FULL") return error("ROOM_FULL", 409);
-    if (result.code === "NOT_A_MEMBER") return error("NOT_A_MEMBER", 403);
-    if (result.code === "NO_SEAT") return error("NO_SEAT", 403);
-    return json({ ok: true, me: { id: user.id, name: user.name || "" }, members: result.members });
+    const snap = await state.ref.get();
+    room = snap.exists ? snap.data() : null;
   } catch {
     return error("RTC_UNAVAILABLE", 503);
   }
+  if (!roomIsOpen(room)) return error("ROOM_NOT_FOUND", 404);
+  // In a cinema only the host and people sitting on a seat come into the hall's call.
+  if (isCinema(room) && room.screening?.cancelled) return error("ROOM_NOT_FOUND", 404);
+  if (isCinema(room) && !mayJoinHall(room, user.id)) return error("NO_SEAT", 403);
+
+  const joined = joinMemory(code, user, { max: maxMembers(room), expiresAt: expiryMs(room) });
+  if (joined.error === "ROOM_FULL") return error("ROOM_FULL", 409);
+  if (joined.error) return error("RTC_UNAVAILABLE", 503);
+  return json({ ok: true, me, members: joined.members });
 }
