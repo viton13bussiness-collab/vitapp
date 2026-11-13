@@ -36,6 +36,14 @@ async function load() {
 const brand = () => h('span', { class: 'wordmark' }, 'VITON', h('sup', null, '13'));
 
 const upgrade = (reason) => plansSheet({ me: S.me, reason });
+/** The person's face: the VITON ID photo when there is one, the first letter of the name until it loads or when there is none. */
+function face() {
+  const letter = (S.me?.name || 'V')[0].toUpperCase();
+  if (S.me?.kind !== 'viton') return letter;
+  const img = h('img', { class: 'ava-img', src: '/api/me/avatar', alt: '', decoding: 'async', draggable: 'false' });
+  img.onerror = () => img.replaceWith(letter);
+  return img;
+}
 
 // ── shell ───────────────────────────────────────────────────────────────────
 const WORLD_TABS = [['home', 'Главная'], ['vit', 'VIT'], ['brain', 'Мозг'], ['messages', 'Сообщения'], ['music', 'VIT Music'], ['browser', 'Meridian']];
@@ -56,7 +64,7 @@ function shell() {
     h('header', { class: 'top' }, h('button', { class: 'logo', onclick: () => go('home'), 'aria-label': 'VITON13 — на главную' }, h('img', { src: '/logo-mark.png', alt: '' }), brand()),
       (tabsEl = h('nav', { class: 'tabs glass', 'aria-label': 'Миры' }, Object.values(tabEls), (moreEl = h('button', { class: 'tab more', title: 'Все миры', 'aria-label': 'Все миры', onclick: launcher }, icon('grid'), h('span', { class: 'tl' }, 'Все миры'))))),
       h('div', { class: 'top-right' }, (miniEl = h('div', { class: 'mini hide' })), h('button', { class: 'icon-btn', title: 'Тематика', 'aria-label': 'Тематика', onclick: themeSheet }, icon('frames')),
-        h('button', { class: 'ava', title: `${S.me.name} · настройки`, 'aria-label': 'Профиль и настройки', onclick: () => go('settings') }, (S.me.name || 'V')[0].toUpperCase()))),
+        h('button', { class: 'ava', title: `${S.me.name} · настройки`, 'aria-label': 'Профиль и настройки', onclick: () => go('settings') }, face()))),
     sub, main));
   vitView = buildVit(); main.append(vitView.root);
   window.addEventListener('hashchange', () => go(location.hash.slice(1) || 'home', true));
@@ -186,7 +194,7 @@ function buildVit() {
   const canvas = h('canvas', { 'aria-hidden': 'true' }), stateEl = h('div', { class: 'state', 'aria-live': 'polite' });
   const stage = h('div', { class: 'stage' }, canvas, stateEl), list = h('div', { class: 'list' });
   const SUGGEST = ['Хочу запустить арт-студию современной живописи', 'Найди свежие новости об ИИ-агентах', 'Сделай план продвижения сайта', 'Что ты обо мне помнишь?'];
-  const hello = h('div', { class: 'hello' }, h('h1', null, `Привет, ${S.me.name}.`), h('p', null, 'Поставьте цель — я доведу её до результата.'), h('div', { class: 'chips' }, SUGGEST.map((s) => h('button', { class: 'chip', onclick: () => send(s) }, s))), planNote());
+  const hello = h('div', { class: 'hello' }, h("h1", null, `Привет, ${String(S.me.name).split(" ")[0]}.`), h('p', null, 'Поставьте цель — я доведу её до результата.'), h('div', { class: 'chips' }, SUGGEST.map((s) => h('button', { class: 'chip', onclick: () => send(s) }, s))), planNote());
   const thread = h('div', { class: 'thread scroll' }, h('div', { class: 'thread-in' }, hello, list));
   const input = h('textarea', { rows: 1, placeholder: matchMedia('(max-width: 480px)').matches ? 'Вопрос или цель' : 'Спросите VIT или поставьте цель', 'aria-label': 'Сообщение для VIT' });
   const mic = h('button', { class: 'round mic', title: 'Сказать голосом', 'aria-label': 'Сказать голосом', onclick: () => toggleMic() }, icon('mic'));
@@ -454,7 +462,7 @@ function viewSettings(arg) {
     body.replaceChildren(h('div', { class: 'loading', style: 'min-height:160px' }, h('i')));
     try {
       if (tab === 'profile') body.replaceChildren(
-        h('div', { class: 'card' }, h('div', { class: 'row' }, h('span', { class: 'ava', style: 'width:46px;height:46px;font-size:17px' }, S.me.name[0].toUpperCase()), h('div', { class: 'grow' }, h('h3', null, S.me.name), h('p', { class: 'hint' }, S.me.kind === 'viton' ? `VITON ID · ${S.me.email}` : 'Гостевой режим — без аккаунта')),
+        h('div', { class: 'card' }, h('div', { class: 'row' }, h('span', { class: 'ava', style: 'width:46px;height:46px;font-size:17px' }, face()), h('div', { class: 'grow' }, h('h3', null, S.me.name), h('p', { class: 'hint' }, S.me.kind === 'viton' ? `VITON ID · ${S.me.email}` : 'Гостевой режим — без аккаунта')),
           h('button', { class: 'btn sm ghost', onclick: async () => { await api('/api/auth/logout', { method: 'POST', body: {} }); location.hash = ''; location.reload(); } }, 'Выйти'))),
         phoneCard({ h, api, toast, toggle }) || '',
         h('div', { class: 'card plan-card' }, h('div', { class: 'row', style: 'flex-wrap:wrap' }, h('div', { class: 'grow' }, h('span', { class: 'cap' }, 'Доступ'), h('h3', null, S.sub?.name || 'Гость'),

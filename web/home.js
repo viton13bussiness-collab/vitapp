@@ -1,6 +1,7 @@
 // The front door of the ecosystem: the welcome in five languages, five themes shown in clean frames, and the home screen each theme lays out its own way.
 import { h, icon, api, css } from '/kit.js';
 import { createOrb } from '/orb.js';
+import { worldIcon } from '/world-icons.js';
 css('/home.css');
 
 export const THEMES = [
@@ -191,7 +192,31 @@ const LAYOUT = {
       h('div', { class: 'hz-built' }, h('span', { class: 'cap' }, 'Работает на открытом коде'), h('div', null, ['Ollama', 'whisper.cpp', 'three.js', 'SQLite', 'Node.js'].map((n) => h('b', null, n)))));
   },
 };
+const phone = () => matchMedia('(max-width: 860px)').matches;
+/** On a phone every theme opens the same calm home: the person, VIT, the worlds as icons — no frames, the system font. */
+function phoneHome(root, ctx) {
+  const name = String(ctx.me?.name || '').split(' ')[0] || 'друг', d = new Date();
+  const day = d.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' });
+  const ask = h('input', { class: 'ph-ask', placeholder: 'Спросите VIT', enterkeyhint: 'send', 'aria-label': 'Вопрос для VIT' });
+  ask.addEventListener('keydown', (e) => { if (e.key === 'Enter' && ask.value.trim()) { e.preventDefault(); ctx.askVit(ask.value.trim()); } });
+  const PLAN = { guest: 'Гость', id: 'VITON ID', vit: 'VIT' };
+  const tile = (id, photo, title, line) => h('button', { class: 'ph-tile', onclick: () => ctx.go(id) }, h('img', { src: photo, alt: '', loading: 'lazy' }), h('span', null, h('b', null, title), h('small', null, line)));
+  root.append(h('div', { class: 'ph scroll' },
+    h('header', { class: 'ph-head' }, h('div', null, h('small', null, day[0].toUpperCase() + day.slice(1)), h('h1', null, `Привет, ${name}`))),
+    h('span', { class: 'ph-plan' }, h('img', { src: '/logo-mark.png', alt: '' }), 'VITON13 · ', PLAN[ctx.plan] || 'Гость'),
+    h('section', { class: 'ph-vit' }, h('img', { class: 'ph-vit-bg', src: '/media/vit.jpg', alt: '' }),
+      h('div', { class: 'ph-vit-in' }, h('small', null, 'Персональный агент'), h('h2', null, 'VIT'), h('p', null, 'Поставьте цель — VIT доведёт её до результата.'),
+        h('div', { class: 'ph-ask-row' }, ask, h('button', { class: 'ph-go', 'aria-label': 'Открыть VIT', onclick: () => (ask.value.trim() ? ctx.askVit(ask.value.trim()) : ctx.go('vit')) }, icon('up'))))),
+    h('h3', { class: 'ph-h' }, 'Миры'),
+    h('div', { class: 'ph-grid' }, [...WORLDS.filter((w) => w.id !== 'vit').map((w) => [w.id, w.name]), ['settings', 'Настройки']].map(([id, label]) =>
+      h('button', { class: 'ph-app', onclick: () => ctx.go(id) }, worldIcon(id), h('span', null, label)))),
+    h('h3', { class: 'ph-h' }, 'Сейчас'),
+    h('div', { class: 'ph-tiles' }, tile('brain', '/media/brain.jpg', 'Мозг', 'Ваши мысли и связи в 3D'), tile('cinema', '/media/cinema.jpg', 'Кинотеатр', 'Кино вместе, как в зале'),
+      tile('music', '/media/music.jpg', 'VIT Music', 'Радио и ваши треки'), tile('budget', '/media/budget.jpg', 'Бюджет', 'Деньги и цели'))));
+}
+
 export function viewHome(ctx) {
+  if (phone()) { const root = h('div', { class: 'view home home-phone' }); phoneHome(root, ctx); return { root, destroy() {} }; }
   const theme = getTheme(), root = h('div', { class: `view home home-${theme}` }), orbs = [];
   const off = (LAYOUT[theme] || LAYOUT.spatial)(root, ctx, orbs);
   return { root, destroy() { orbs.forEach((o) => o.stop()); off?.(); } };

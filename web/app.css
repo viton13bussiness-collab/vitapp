@@ -326,3 +326,45 @@ body.void .top .tabs { background: rgba(20, 20, 24, 0.7); }
 @media (max-width: 640px) { .lan-pair { grid-template-columns: minmax(0, 1fr); justify-items: center; } .lan-side { width: 100%; } .lan-card .row { flex-wrap: wrap; } .lan-sw { white-space: normal; width: 100%; justify-content: space-between; } }
 /* phone: the spatial home's top row loses the «Профиль» pill (the avatar in the bar does the same) so nothing runs off screen */
 @media (max-width: 520px) { .sp-nav .sp-contact { display: none; } .sp-nav { right: auto; } }
+
+/* the VITON ID photo in the round avatar */
+.ava { overflow: hidden; }
+.ava-img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; display: block; }
+
+/* ── phone: the system font everywhere, no frames, calm chrome — whatever theme is chosen on the Mac ── */
+@media (max-width: 860px) {
+  :root, :root[data-theme] { --font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", sans-serif; }
+  :root[data-theme="axon"], :root[data-theme="ribbon"] { --r-sm: 10px; --r: 14px; --r-lg: 18px; --r-xl: 24px; --panel-line: rgba(255, 255, 255, 0.08); --shadow-lg: 0 20px 50px rgba(0, 0, 0, 0.45); }
+  body { font-family: var(--font); }
+  .cap { font-family: var(--font); letter-spacing: 0.02em; text-transform: none; font-size: 12.5px; font-weight: 600; }
+  .top { padding: calc(8px + env(safe-area-inset-top)) 16px 6px; }
+  .top .logo .wordmark { display: inline; font-size: 15px; }
+  .top-right .icon-btn { display: none; }
+  body.desktop .top { padding-left: 16px; }
+  .tabs { border-radius: 30px; }
+  .tab { font-size: 10px; font-weight: 600; }
+  .tab.on { color: var(--pill-ink); }
+}
+
+/* phone: the worlds' glass windows become the screen itself — no frame around everything, content edge to edge */
+@media (max-width: 860px) {
+  .ms-win, .mt-win, .cn-win, .mu-win, .ap-win { border-radius: 0 !important; box-shadow: none !important; border: 0 !important; outline: 0 !important;
+    margin: 0 !important; inset: 0 !important; width: 100% !important; max-width: none !important; height: 100% !important; max-height: none !important; }
+  .ms-win::before, .mt-win::before, .cn-win::before, .mu-win::before, .ap-win::before, .ms-win::after, .mt-win::after, .cn-win::after, .mu-win::after, .ap-win::after { display: none !important; }
+  .view:has(> .ms-win), .view:has(> .mt-win), .view:has(> .cn-win), .view:has(> .mu-win), .view:has(> .ap-win) { padding: 0 !important; }
+  .glass { box-shadow: none; }
+}
+
+/* phone tab bar: no sliding pill — the active world simply lights up, with a small dot under it */
+@media (max-width: 860px) {
+  .tabs { background: rgba(22, 22, 26, 0.82) !important; -webkit-backdrop-filter: blur(30px) saturate(1.6); backdrop-filter: blur(30px) saturate(1.6); box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.1), 0 20px 40px rgba(0, 0, 0, 0.5); }
+  .tabs > .ind { display: none !important; }
+  .tab { color: rgba(245, 245, 247, 0.45); position: relative; justify-content: center; }
+  .tab.on, .tab.on:hover { color: #fff; background: none; }
+  .tab.on::after { content: ''; position: absolute; bottom: 5px; left: 50%; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: #fff; }
+  .tab .icon { width: 22px; height: 22px; }
+}
+@media (max-width: 860px) {
+  .mr-stage { border-radius: 0 !important; box-shadow: none !important; margin: 0 -12px; }
+  .mr-start-in { padding-top: 36px; }
+}

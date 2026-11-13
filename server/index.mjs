@@ -71,6 +71,14 @@ async function api(req, res, url, user, token) {
   if (p === '/api/me') return json(res, 200, { ok: true, me: pubUser(user), version: VERSION });
   if (!user) return fail(res, 401, 'Войдите в VIT');
   user.plan = planOf(user);
+  // the person's photo from VITON ID (saved with the messages link), so the app shows a face, not a letter
+  if (p === '/api/me/avatar' && m === 'GET') {
+    let a = ''; try { a = one('SELECT avatar FROM messages_link WHERE user = ?', user.id)?.avatar || ''; } catch { /* no link yet */ }
+    const d = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(a);
+    if (d) { res.writeHead(200, { 'content-type': d[1], 'cache-control': 'private, max-age=3600', 'x-content-type-options': 'nosniff' }); return res.end(Buffer.from(d[2], 'base64')); }
+    if (/^https:\/\//.test(a)) { res.writeHead(302, { location: a }); return res.end(); }
+    res.writeHead(404); return res.end();
+  }
   // the home-network door is managed only on the Mac itself
   if (seg[1] === 'lan' && req.viaLan) return fail(res, 403, 'Управлять доступом можно только на Mac');
   if (p === '/api/lan' && m === 'GET') return json(res, 200, { ok: true, ...(await lanState(user)) });
