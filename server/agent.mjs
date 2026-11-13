@@ -9,6 +9,8 @@ import { recall, remember } from './memory.mjs';
 import { AGENTS, agentById } from './agents.mjs';
 import { webSearch, readPage } from './tools.mjs';
 import { renderSite } from './site.mjs';
+import { detect } from './intent.mjs';
+import { understand, perform, linkMessage } from './actions.mjs';
 
 const today = () => new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 const persona = (user, mem = []) => [
@@ -108,7 +110,8 @@ async function runGoal({ user, convId, text, title, emit, signal, onSwitch, meta
 /** One turn of the conversation. emit() streams what VIT is doing to the app. */
 export async function handle({ user, convId, text, emit, signal }) {
   const t = now(); text = String(text).trim().slice(0, 4000);
-  run('INSERT INTO msgs (conv, role, content, meta, created) VALUES (?, ?, ?, ?, ?)', convId, 'user', text, '{}', t);
+  const quick = detect(text), free = !!quick && quick.action !== 'budget.report';          // a plain command needs no model and uses no trial answer
+  run('INSERT INTO msgs (conv, role, content, meta, created) VALUES (?, ?, ?, ?, ?)', convId, 'user', text, free ? '{"act":1}' : '{}', t);
   const conv = one('SELECT * FROM convs WHERE id = ?', convId);
   run('UPDATE convs SET updated = ?, title = ? WHERE id = ?', t, conv.title || text.slice(0, 60), convId);
   const history = all('SELECT role, content FROM msgs WHERE conv = ? ORDER BY id DESC LIMIT 9', convId).reverse();
@@ -118,6 +121,13 @@ export async function handle({ user, convId, text, emit, signal }) {
   const say = async (system, messages, maxTokens = 500, tier = 'fast') => { const res = await chat({ system, messages, tier, maxTokens, signal, onSwitch, onToken: (tok) => emit({ type: 'token', t: tok }) }); Object.assign(meta, { model: res.model, provider: res.name, local: res.local }); return res.text.trim(); };
 
   try {
+  // VIT's hands: «потратил 500 на такси», «включи джаз», «открой бюджет» — done in the world, answered with the facts
+  const act = quick ? { ...quick, by: 'rules' } : await understand(text, { signal, onSwitch });
+  if (act) {
+    meta.kind = 'action'; if (free) meta.free = true; emit({ type: 'route', kind: 'action' });
+    const done = await perform(user, act); meta.action = done.event; meta.by = act.by; reply = done.reply;
+    emit({ type: 'action', ...done.event });
+  } else {
   const [mem, r] = await Promise.all([recall(user.id, text).catch(() => []), route(text, signal, onSwitch)]);
   meta.kind = r.kind; emit({ type: 'route', kind: r.kind });
   const me = persona(user, mem);
@@ -139,6 +149,7 @@ export async function handle({ user, convId, text, emit, signal }) {
     meta.propose = { title: r.title, detail: text };
     reply = await say(`${me}\n\nЭта задача требует живого исполнителя или действия в реальном мире. Не начинай с «я не могу». В 2–3 предложениях скажи, что это работа для исполнителя, что ты готов передать её команде VITON13 как заявку и что статус будет виден в разделе «Заявки». Если не хватает важной детали — задай один уточняющий вопрос. Сроков и цен не обещай. Спроси, передавать ли.`, history, 250);
   } else reply = await say(me, history);
+  }
 
   } catch (e) {
     if (signal?.aborted && meta.job) run('INSERT INTO msgs (conv, role, content, meta, created) VALUES (?, ?, ?, ?, ?)', convId, 'assistant', 'Остановил работу. То, что агенты успели сделать, лежит в разделе «Работы».', JSON.stringify(meta), now());
@@ -146,7 +157,9 @@ export async function handle({ user, convId, text, emit, signal }) {
   }
   if (switches.length) meta.switches = switches;
   const id = Number(run('INSERT INTO msgs (conv, role, content, meta, created) VALUES (?, ?, ?, ?, ?)', convId, 'assistant', reply, JSON.stringify(meta), now()).lastInsertRowid);
+  if (meta.action?.id) linkMessage(meta.action.id, id);
   emit({ type: 'final', message: { id, role: 'assistant', content: reply, meta, created: now() } });
+  if (meta.action) return;                                                                   // an action is not a story about the person: nothing more to remember
   try { const nodes = await remember(user.id, text, signal); if (nodes.length) { run('UPDATE msgs SET meta = ? WHERE id = ?', JSON.stringify({ ...meta, remembered: nodes.map((n) => ({ cat: n.cat, text: n.text })) }), id); emit({ type: 'memory', nodes }); } } catch { /* memory is best effort */ }
 }
 

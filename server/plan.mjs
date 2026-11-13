@@ -18,6 +18,8 @@ export const FEATURES = [
   { id: 'cinema.host', name: 'Кинотеатр — проводить сеансы', def: 'vit' },
   { id: 'music.cloud', name: 'VIT Music в облаке', def: 'vit' },
   { id: 'apps', name: 'Скачивание приложений с GitHub', def: 'id' },
+  { id: 'ai', name: 'Нейросети на этом Mac', def: 'id' },
+  { id: 'ai.cloud', name: 'Облачные модели в Нейросетях', def: 'vit' },
 ];
 const access = () => getSetting('access', {});
 export const guestTrial = () => { const n = Number(getSetting('guestTrial', GUEST_TRIAL)); return Number.isFinite(n) ? Math.max(0, Math.min(n, 100)) : GUEST_TRIAL; };
@@ -53,7 +55,7 @@ export function subscription(user) {
     can: Object.fromEntries(FEATURES.map((f) => [f.id, can(user, f.id)])) };
 }
 export function trialLeft(user) {
-  const n = all("SELECT COUNT(*) AS n FROM msgs m JOIN convs c ON c.id = m.conv WHERE c.user = ? AND m.role = 'user'", user.id)[0]?.n || 0;
+  const n = all("SELECT COUNT(*) AS n FROM msgs m JOIN convs c ON c.id = m.conv WHERE c.user = ? AND m.role = 'user' AND m.meta NOT LIKE '%\"act\":1%'", user.id)[0]?.n || 0;   // plain commands («потратил 500 на такси») are not VIT answers
   return Math.max(0, guestTrial() - n);
 }
 /** What VIT may do for this person right now: null when allowed, otherwise the reason to show. */

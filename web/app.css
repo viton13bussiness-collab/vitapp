@@ -142,6 +142,11 @@ body.desktop .top { padding-left: 88px; -webkit-app-region: drag; } body.desktop
 .step.wait { opacity: 0.5; }
 .propose { border-radius: 18px; background: var(--soft); padding: 14px 16px; margin-top: 12px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .propose .grow { flex: 1; min-width: 180px; } .propose b { display: block; font-size: 14px; } .propose small { color: var(--ink2); }
+/* VIT's actions: one line per thing done in a world */
+.act { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 12px; margin: 0 0 12px; border-radius: 18px; background: var(--soft); box-shadow: inset 0 0 0 0.5px var(--line); max-width: 600px; animation: rise 0.5s var(--ease) both; }
+.act .act-ic { flex: none; width: 34px; height: 34px; } .act .act-ic .wi, .act .act-ic svg { display: block; width: 34px; height: 34px; }
+.act .grow { flex: 1; min-width: 160px; } .act small { display: block; font-size: 11.5px; color: var(--ink2); letter-spacing: 0.01em; } .act b { display: block; font-size: 14.5px; font-weight: 600; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.act.undone b { text-decoration: line-through; color: var(--ink2); } .act.fail .act-ic { opacity: 0.55; } .act .act-note { font-size: 12.5px; color: var(--ink2); }
 .typing { display: inline-flex; gap: 5px; padding: 8px 0; } .typing i { width: 7px; height: 7px; border-radius: 50%; background: var(--mute); animation: blink 1.2s infinite; } .typing i:nth-child(2) { animation-delay: 0.15s; } .typing i:nth-child(3) { animation-delay: 0.3s; }
 .composer-wrap { padding: 6px clamp(14px, 4vw, 40px) 16px; }
 .composer { max-width: 740px; margin: 0 auto; display: flex; align-items: flex-end; gap: 6px; border-radius: 30px; padding: 7px 7px 7px 20px; transition: box-shadow 0.3s, border-color 0.3s; }
@@ -368,3 +373,4 @@ body.void .top .tabs { background: rgba(20, 20, 24, 0.7); }
   .mr-stage { border-radius: 0 !important; box-shadow: none !important; margin: 0 -12px; }
   .mr-start-in { padding-top: 36px; }
 }
+@media (max-width: 860px) { .top-right .icon-btn.sl-open { display: grid; } }

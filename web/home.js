@@ -200,6 +200,17 @@ function phoneHome(root, ctx) {
   const ask = h('input', { class: 'ph-ask', placeholder: 'Спросите VIT', enterkeyhint: 'send', 'aria-label': 'Вопрос для VIT' });
   ask.addEventListener('keydown', (e) => { if (e.key === 'Enter' && ask.value.trim()) { e.preventDefault(); ctx.askVit(ask.value.trim()); } });
   const PLAN = { guest: 'Гость', id: 'VITON ID', vit: 'VIT' };
+  let today;
+  // «Сегодня»: three live numbers from the person's own data, each a door into its world; a card that has nothing yet stays out
+  const fmt = (n, cur) => { try { return new Intl.NumberFormat('ru-RU', { style: 'currency', currency: cur || 'RUB', maximumFractionDigits: 0 }).format(n); } catch { return Math.round(n) + ' ₽'; } };
+  const card = (id, label, value, note) => h('button', { class: 'ph-stat', onclick: () => ctx.go(id) }, h('small', null, label), h('b', null, value), note && h('span', null, note));
+  Promise.allSettled([api('/api/budget'), api('/api/memory'), api('/api/music/home')]).then(([b, m, mu]) => {
+    const cards = [], month = new Date().toLocaleDateString('ru-RU', { month: 'long' });
+    if (b.value?.profile) cards.push(card('budget', 'Потрачено', fmt(b.value.month?.out || 0, b.value.profile.currency), month[0].toUpperCase() + month.slice(1)));
+    if (m.value) cards.push(card('brain', 'В мозге', String(m.value.nodes?.length || 0), 'мыслей'));
+    if (mu.value) cards.push(card('music', 'Мои треки', String(mu.value.upCount || 0), 'VIT Music'));
+    if (cards.length && today) today.replaceChildren(h('h3', { class: 'ph-h' }, 'Сегодня'), h('div', { class: 'ph-stats' }, cards));
+  });
   const tile = (id, photo, title, line) => h('button', { class: 'ph-tile', onclick: () => ctx.go(id) }, h('img', { src: photo, alt: '', loading: 'lazy' }), h('span', null, h('b', null, title), h('small', null, line)));
   root.append(h('div', { class: 'ph scroll' },
     h('header', { class: 'ph-head' }, h('div', null, h('small', null, day[0].toUpperCase() + day.slice(1)), h('h1', null, `Привет, ${name}`))),
@@ -207,6 +218,7 @@ function phoneHome(root, ctx) {
     h('section', { class: 'ph-vit' }, h('img', { class: 'ph-vit-bg', src: '/media/vit.jpg', alt: '' }),
       h('div', { class: 'ph-vit-in' }, h('small', null, 'Персональный агент'), h('h2', null, 'VIT'), h('p', null, 'Поставьте цель — VIT доведёт её до результата.'),
         h('div', { class: 'ph-ask-row' }, ask, h('button', { class: 'ph-go', 'aria-label': 'Открыть VIT', onclick: () => (ask.value.trim() ? ctx.askVit(ask.value.trim()) : ctx.go('vit')) }, icon('up'))))),
+    (today = h('div', { class: 'ph-today' })),
     h('h3', { class: 'ph-h' }, 'Миры'),
     h('div', { class: 'ph-grid' }, [...WORLDS.filter((w) => w.id !== 'vit').map((w) => [w.id, w.name]), ['settings', 'Настройки']].map(([id, label]) =>
       h('button', { class: 'ph-app', onclick: () => ctx.go(id) }, worldIcon(id), h('span', null, label)))),

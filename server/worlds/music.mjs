@@ -496,3 +496,17 @@ export async function handle({ req, res, url, user, seg, method, json, fail, bod
   }
   return fail(404, 'Нет такого адреса'), true;
 }
+
+/** For VIT («включи джаз», «поставь Tenca»): the person's own tracks first, then radio by genre or name, then a free album.
+ *  Returns tracks in the same shape the player engine (window.__vitMusic.playList) takes. */
+export async function vitFind(user, query, { radio: wantRadio = false, tag: genre = '' } = {}) {
+  const text = clip(query, 60), words = text.toLowerCase().split(/\s+/).filter(Boolean);
+  const hit = (t) => { const hay = `${t.title} ${t.artist} ${t.album}`.toLowerCase(); return words.every((w) => hay.includes(w)); };
+  if (words.length && !wantRadio) { const mine = [...uploads(user), ...scan()].filter(hit); if (mine.length) return { from: 'local', tracks: mine.slice(0, 50) }; }
+  if (genre) { const g = genre.toLowerCase(), r = (await safe(() => radioTag(genre), [])).map((t, i) => ({ t, i, s: (t.title.toLowerCase().includes(g) ? 2 : 0) + (t.artist.toLowerCase().includes(g) ? 1 : 0) }));
+    r.sort((a, b) => b.s - a.s || a.i - b.i); if (r.length) return { from: 'radio', tracks: r.slice(0, 20).map((x) => x.t) }; }            // stations named for the genre first
+  if (!words.length) { const r = await safe(radioRu, []); return { from: r.length ? 'radio' : null, tracks: r.slice(0, 20) }; }
+  const r = await safe(() => radioFind(text), []); if (r.length) return { from: 'radio', tracks: r.slice(0, 20) };
+  if (!wantRadio) { const a = (await safe(() => archiveFind(text), []))[0]; if (a) { const al = await archiveItem(a.id).catch(() => null); if (al?.tracks?.length) return { from: 'free', tracks: al.tracks.slice(0, 50) }; } }
+  return { from: null, tracks: [] };
+}

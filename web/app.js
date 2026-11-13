@@ -8,6 +8,7 @@ import { viewHome, themeSheet, initTheme, getTheme } from '/home.js';
 import { runIntro } from '/intro.js';
 import { gate, plansSheet } from '/gate.js';
 import { worldIcon } from '/world-icons.js';
+import { openSpotlight } from '/spotlight.js';
 import { phoneCard } from '/lan-card.js';
 
 // ── state ───────────────────────────────────────────────────────────────────
@@ -63,11 +64,12 @@ function shell() {
   app.replaceChildren(h('div', { class: 'shell' },
     h('header', { class: 'top' }, h('button', { class: 'logo', onclick: () => go('home'), 'aria-label': 'VITON13 — на главную' }, h('img', { src: '/logo-mark.png', alt: '' }), brand()),
       (tabsEl = h('nav', { class: 'tabs glass', 'aria-label': 'Миры' }, Object.values(tabEls), (moreEl = h('button', { class: 'tab more', title: 'Все миры', 'aria-label': 'Все миры', onclick: launcher }, icon('grid'), h('span', { class: 'tl' }, 'Все миры'))))),
-      h('div', { class: 'top-right' }, (miniEl = h('div', { class: 'mini hide' })), h('button', { class: 'icon-btn', title: 'Тематика', 'aria-label': 'Тематика', onclick: themeSheet }, icon('frames')),
+      h('div', { class: 'top-right' }, (miniEl = h('div', { class: 'mini hide' })), h('button', { class: 'icon-btn sl-open', title: 'Поиск по системе (⌘K)', 'aria-label': 'Поиск по системе', onclick: spotlight }, icon('search')), h('button', { class: 'icon-btn', title: 'Тематика', 'aria-label': 'Тематика', onclick: themeSheet }, icon('frames')),
         h('button', { class: 'ava', title: `${S.me.name} · настройки`, 'aria-label': 'Профиль и настройки', onclick: () => go('settings') }, face()))),
     sub, main));
   vitView = buildVit(); main.append(vitView.root);
   window.addEventListener('hashchange', () => go(location.hash.slice(1) || 'home', true));
+  window.addEventListener('keydown', (e) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); spotlight(); } });
   window.addEventListener('vit:theme', () => { if (S.view === 'home') go('home'); });
   window.addEventListener('resize', () => { slideTo(tabsEl, [...Object.values(tabEls), moreEl].find((el) => el.classList.contains('on'))); slideTo(sub, subEls[S.view]); });
   // the room shifts a little against the pointer, so the glass feels like it floats in front of it
@@ -90,6 +92,8 @@ function paintMini() {
   miniEl.replaceChildren(h('button', { class: 'mini-t', title: 'Открыть Музыку', onclick: () => go('music') }, h('span', { class: 'mini-eq' + (playing ? ' on' : '') }, h('i'), h('i'), h('i')), h('span', null, t.title || 'Музыка')),
     h('button', { class: 'mini-p', 'aria-label': playing ? 'Пауза' : 'Играть', onclick: () => m.toggle() }, playing ? '❚❚' : '▶'));
 }
+/** «Поиск по системе»: worlds, settings, thoughts, budget, tracks and conversations in one field. */
+const spotlight = () => openSpotlight({ worlds: ALL_WORLDS.map(([id, name]) => [id, name]), go: (v, arg) => go(v, false, arg), askVit: (q) => { go('vit'); vitView.send(q); } });
 /** «Все миры»: the visionOS home — round glass icons floating over the blurred room. */
 function launcher() {
   document.querySelector('.launch')?.remove();
@@ -181,10 +185,31 @@ function proposeEl(m) {
   return box;
 }
 const noticeEl = (s) => h('div', null, h('div', { class: 'notice' }, h('span', { class: 'dot' }), s.to ? `${s.from}: ${s.reason}. Переключился на «${s.to}»` : `${s.from}: ${s.reason}`));
+// VIT's actions: one small card per thing done in a world — what was done, «Отменить» for ten minutes, «Открыть» to go there
+const ACT_LABEL = { 'budget.add': 'Бюджет · запись', 'budget.goal': 'Бюджет · цель', 'budget.report': 'Бюджет · итог', 'brain.add': 'Мозг', 'music.play': 'VIT Music', open: 'Открыть', 'meet.create': 'Встречи' };
+async function vitPlay(tracks) { if (!tracks?.length) return; if (!window.__vitMusic) await import('/worlds/music.js'); window.__vitMusic.playList(tracks, 0); mini(); }
+function actionEl(a) {
+  const world = a.world || 'vit', box = h('div', { class: 'act' });
+  const paint = () => {
+    box.className = 'act' + (a.ok ? '' : ' fail') + (a.undone ? ' undone' : '');
+    const btns = [];
+    if (a.undone) btns.push(h('span', { class: 'act-note' }, 'Отменено'));
+    else if (a.ok && a.undo && a.id && Date.now() - (a.at || 0) < 10 * 60e3) {
+      const b = h('button', { class: 'btn sm ghost', onclick: async () => { b.disabled = true;
+        try { await api('/api/vit/undo', { body: { id: a.id } }); a.undone = true; paint(); toast('Отменил'); } catch (err) { toast(err.message); b.disabled = false; } } }, 'Отменить');
+      btns.push(b);
+    }
+    if (a.ok && a.action === 'music.play' && a.data?.tracks?.length) btns.push(h('button', { class: 'btn sm ghost', onclick: () => vitPlay(a.data.tracks).catch(() => toast('Не получилось включить')) }, 'Играть'));
+    if (world !== 'vit' && !a.undone) btns.push(h('button', { class: 'btn sm', onclick: () => go(world, false, a.data?.code ? { code: a.data.code } : undefined) }, 'Открыть'));
+    box.replaceChildren(h('span', { class: 'act-ic' }, worldIcon(world === 'memory' ? 'brain' : world)),
+      h('div', { class: 'grow' }, h('small', null, a.ok ? ACT_LABEL[a.action] || 'Действие' : 'Не получилось'), h('b', null, a.summary)), ...btns);
+  };
+  paint(); return box;
+}
 function msgEl(m) {
   if (m.role === 'user') return h('div', { class: 'msg user' }, h('div', { class: 'bubble' }, m.content));
   const meta = m.meta || {}, job = meta.job && S.jobs.get(meta.job);
-  return h('div', { class: 'msg vitm' }, (meta.switches || []).map(noticeEl), job && planEl(job), h('div', { class: 'text md', html: md(m.content, meta.sources) }),
+  return h('div', { class: 'msg vitm' }, (meta.switches || []).map(noticeEl), job && planEl(job), meta.action && actionEl(meta.action), h('div', { class: 'text md', html: md(m.content, meta.sources) }),
     meta.sources?.length && h('div', { class: 'sources' }, meta.sources.map((s) => h('a', { class: 'source', href: s.url, target: '_blank', rel: 'noopener noreferrer', title: s.title }, h('b', null, String(s.n)), h('span', null, (() => { try { return new URL(s.url).hostname.replace(/^www\./, ''); } catch { return s.title; } })())))),
     meta.propose && m.id && proposeEl(m), meta.remembered?.length && rememberedEl(meta.remembered),
     h('div', { class: 'meta' }, meta.model && h('span', { class: 'who' }, h('span', { class: 'dot ' + (meta.local ? 'ok' : 'limit') }), `${meta.provider} · ${meta.model}`), meta.proactive && h('span', null, 'VIT спросил сам'), m.created && h('span', null, when(m.created))));
@@ -226,11 +251,12 @@ function buildVit() {
     const notices = h('div'), planSlot = h('div'), textEl = h('div', { class: 'text md' }, h('span', { class: 'typing' }, h('i'), h('i'), h('i')));
     let liveEl = h('div', { class: 'msg vitm' }, notices, planSlot, textEl); list.append(liveEl);
     root.classList.add('talk'); hello.classList.add('hide'); bottom(true); orb.state('think'); setState('Думаю');
-    let acc = '', job = null, sources = null, raf = 0, final = null; abort = new AbortController();
+    let acc = '', job = null, sources = null, raf = 0, final = null, act = null; abort = new AbortController();
     const paint = () => { raf = 0; textEl.innerHTML = md(acc, sources); bottom(); };
     try {
       await stream('/api/chat', { conv: S.conv, text }, (e) => {
-        if (e.type === 'route') setState({ chat: 'Думаю', search: 'Ищу в интернете', goal: 'Собираю команду агентов', human: 'Думаю' }[e.kind]);
+        if (e.type === 'route') setState({ chat: 'Думаю', search: 'Ищу в интернете', goal: 'Собираю команду агентов', human: 'Думаю', action: 'Делаю' }[e.kind]);
+        else if (e.type === 'action') { act = e; planSlot.replaceChildren(actionEl(e)); bottom(true); if (e.ok && e.action === 'music.play') vitPlay(e.data?.tracks).catch(() => toast('Не получилось включить музыку')); }
         else if (e.type === 'status') setState(e.text);
         else if (e.type === 'token') { if (!acc) { orb.state('speak'); setState(''); } acc += e.t; raf ||= requestAnimationFrame(paint); }
         else if (e.type === 'reset') { acc = ''; raf ||= requestAnimationFrame(paint); }
@@ -238,7 +264,7 @@ function buildVit() {
         else if (e.type === 'sources') sources = e.items;
         else if (e.type === 'plan') { job = e.job; S.jobs.set(job.id, job); planSlot.replaceChildren(planEl(job)); bottom(true); }
         else if (e.type === 'step' && job) { const s = job.steps[e.i]; s.status = e.status; if (e.file) s.file = e.file; planSlot.replaceChildren(planEl(job)); setState(e.status === 'run' ? `${s.name} работает` : ''); bottom(); }
-        else if (e.type === 'final') { if (S.sub?.plan === 'guest' && S.sub.trialLeft > 0) { S.sub.trialLeft--; paintPlanNote(); } final = e.message; S.messages.push(final); const el = msgEl(final); liveEl.replaceWith(el); liveEl = el; orb.state('idle'); setState(''); S.busy = false; busyUI(); bottom();
+        else if (e.type === 'final') { if (S.sub?.plan === 'guest' && S.sub.trialLeft > 0 && !e.message.meta?.free) { S.sub.trialLeft--; paintPlanNote(); } final = e.message; S.messages.push(final); const el = msgEl(final); liveEl.replaceWith(el); liveEl = el; orb.state('idle'); setState(''); S.busy = false; busyUI(); bottom();
           if (S.speak === 'always' || (S.speak === 'voice' && opt.voice)) speak(final.content); }
         else if (e.type === 'memory') { final && (final.meta.remembered = e.nodes); liveEl.querySelector('.meta')?.before(rememberedEl(e.nodes)); e.nodes.forEach((n, i) => setTimeout(() => orb.burst(S.cats.findIndex((c) => c.id === n.cat)), i * 380));
           if (S.view !== 'memory') { S.memBadge += e.nodes.length; badges(); } bottom(); }
@@ -247,6 +273,10 @@ function buildVit() {
     } catch (err) { if (err.status === 402) { textEl.replaceChildren(lockCard(err)); final = true; } if (!final) { textEl.textContent = err.name === 'AbortError' ? (acc ? acc + ' …' : job ? 'Остановил работу. То, что агенты успели сделать, лежит в разделе «Работы».' : 'Остановлено.') : 'Нет связи с VIT. Проверьте, что приложение запущено.';
       if (job) { for (const s of job.steps) if (s.status === 'run') s.status = 'fail'; planSlot.replaceChildren(planEl(job)); } } }
     if (!final && job) api('/api/jobs').then((d) => { S.jobs = new Map(d.items.map((j) => [j.id, j])); }).catch(() => {});
+    // what only the window can do, once the answer is in: open the world, start the meeting
+    if (act?.ok && act.action === 'open') setTimeout(() => go(act.data.world), 700);
+    else if (act?.ok && act.action === 'meet.create') api('/api/meet/rooms', { body: { title: act.data?.title || '' } }).then((d) => { if (final?.meta?.action) final.meta.action.data = { ...final.meta.action.data, code: d.room.code }; go('meet', false, { code: d.room.code }); })
+      .catch((err) => { if (err.code !== 'no_rooms') toast(err.message); go('meet'); });
     S.busy = false; busyUI(); if (!window.speechSynthesis?.speaking) orb.state('idle'); setState(''); abort = null;
   }
 

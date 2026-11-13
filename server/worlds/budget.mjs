@@ -23,7 +23,7 @@ const fmt = (n, cur) => { try { return new Intl.NumberFormat('ru-RU', { style: '
 
 function profile(user) { return one('SELECT currency, balance, income, since, updated FROM budget_profile WHERE user = ?', user) || null; }
 
-function state(user) {
+export function state(user) {
   const p = profile(user), today = new Date(), month = dayOf(today).slice(0, 7);
   const sumSince = p ? one("SELECT COALESCE(SUM(CASE WHEN kind = 'in' THEN amount ELSE -amount END), 0) AS s FROM budget_tx WHERE user = ? AND created >= ?", user, p.since || 0).s : 0;
   const m = one("SELECT COALESCE(SUM(CASE WHEN kind = 'in' THEN amount END), 0) AS i, COALESCE(SUM(CASE WHEN kind = 'out' THEN amount END), 0) AS o FROM budget_tx WHERE user = ? AND substr(day, 1, 7) = ?", user, month);

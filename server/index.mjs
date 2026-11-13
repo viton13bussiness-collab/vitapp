@@ -7,6 +7,8 @@ import { HOST, PORT, WEB, WORK, VERSION } from './config.mjs';
 import { all, one, run, now, getSetting, setSetting } from './db.mjs';
 import { signInLocal, signInViton, signOut, userByToken } from './auth.mjs';
 import { handle, pulse, jobShape } from './agent.mjs';
+import { isFree } from './intent.mjs';
+import { undo as undoAction } from './actions.mjs';
 import { graph, forget, forgetAll, addNode, CATS } from './memory.mjs';
 import { planOf, subscription, vitBlocked, listGrants, setGrant, can, isOwner, FEATURES, needs, setAccess, guestTrial, setGuestTrial, ownerList } from './plan.mjs';
 const adminState = () => ({
@@ -95,12 +97,13 @@ async function api(req, res, url, user, token) {
 
   if (p === '/api/chat' && m === 'POST') {
     const b = await body(req), c = ownConv(user, b.conv); if (!c) return fail(res, 404, 'Диалог не найден'); if (!String(b.text || '').trim()) return fail(res, 400, 'Пустое сообщение');
-    const blocked = vitBlocked(user); if (blocked) return json(res, 402, { ok: false, code: blocked.code, message: blocked.message });
+    const blocked = vitBlocked(user); if (blocked && !isFree(b.text)) return json(res, 402, { ok: false, code: blocked.code, message: blocked.message });
     const send = sse(req, res), ac = new AbortController(); res.on('close', () => { if (!res.writableEnded) ac.abort(); });
     try { await handle({ user, convId: c.id, text: b.text, emit: send, signal: ac.signal }); }
     catch (e) { if (!ac.signal.aborted) send({ type: 'error', message: e.code ? e.message : 'Что-то пошло не так. Попробуйте ещё раз.' }); if (!e.code && !ac.signal.aborted) console.error('[chat]', e); }
     send({ type: 'done' }); return res.end();
   }
+  if (p === '/api/vit/undo' && m === 'POST') { const b = await body(req), r = undoAction(user, b.id); return r.ok ? json(res, 200, r) : fail(res, r.status || 400, r.message); }
   if (p === '/api/pulse') { if (!can(user, 'vit')) return json(res, 200, { ok: true, message: null }); try { return json(res, 200, { ok: true, message: await pulse(user, currentConv(user).id) }); } catch { return json(res, 200, { ok: true, message: null }); } }
   if (p === '/api/events') { const send = sse(req, res), f = { user: user.id, team: url.searchParams.get('team') === '1', send }; feeds.add(f); send({ type: 'hello' }); const beat = setInterval(() => res.write(': ping\n\n'), 25000); return req.on('close', () => { clearInterval(beat); feeds.delete(f); }); }
 
