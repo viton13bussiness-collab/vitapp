@@ -3,6 +3,8 @@
 // viton13.com keeps the screening (server/worlds/cinema.mjs → site /api/rtc/*, kind «cinema»); the film and the cameras
 // go straight between the devices (web/worlds/rtc.js). The host leads the film; everyone else follows its clock.
 import { createMesh, fakeMedia } from '/worlds/rtc.js';
+// the hall on its own: the same calls as the mesh, nobody on the other end
+const soloMesh = () => ({ peers: new Map(), setVideoLimit() {}, start() {}, send() {}, broadcast() {}, localTime: (_p, at) => at, addStream() {}, removeStream() {}, leave() {} });
 import { emojiPicker } from '/worlds/emoji.js';
 
 const SVG = (d) => `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
@@ -72,7 +74,8 @@ export default function view(ctx, arg) {
   }
   function siteMissing(e) {
     if (e?.code !== 'no_cinema') return false;
-    quiet('Кинотеатра на viton13.com ещё нет', 'Приложение готово, а сайту нужно обновление: сеансы, билеты и места хранятся там. После выкладки обновления кинотеатр заработает сам.', h('button', { class: 'btn ghost', onclick: boot }, 'Проверить снова'));
+    quiet('Сеансы для зрителей — после обновления сайта', 'Билеты, места и соединение зрителей хранятся на viton13.com — сайту нужно обновление. А сам зал уже работает: зайдите в него один, со своей камерой и фильмом.',
+      h('button', { class: 'btn', onclick: () => rehearsal() }, 'Открыть зал'), h('button', { class: 'btn ghost', onclick: boot }, 'Проверить снова'));
     return true;
   }
   const fail = (e) => siteMissing(e) || toast(e.message);
@@ -256,6 +259,36 @@ export default function view(ctx, arg) {
   }
 
   // ── the hall ─────────────────────────────────────────────────────────────
+  // ── the hall on its own: no site, no other viewers — to watch alone or to set everything up ──
+  function rehearsal() {
+    win.className = 'cn-win cn-solo'; refresh = rehearsal;
+    let kind = 'video', fileUrl = '';
+    const src = h('input', { class: 'cn-input', placeholder: 'Ссылка на видео .mp4 / .webm или YouTube', autocomplete: 'off', spellcheck: 'false', 'aria-label': 'Ссылка на фильм' });
+    const fileIn = h('input', { type: 'file', accept: 'video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov,.m4v', hidden: true });
+    const fileName = h('small', { class: 'cn-empty' }, '');
+    fileIn.onchange = () => { const f = fileIn.files?.[0]; if (!f) return; if (fileUrl) URL.revokeObjectURL(fileUrl); fileUrl = URL.createObjectURL(f); kind = 'file'; fileName.textContent = 'Файл: ' + f.name; src.value = ''; };
+    const go = async (k) => {
+      const v = src.value.trim(), yt = /(?:youtube\.com|youtu\.be)\//i.test(v);
+      const film = k === 'screen' ? { kind: 'screen', src: '' } : kind === 'file' && !v ? { kind: 'file', src: fileUrl } : yt ? { kind: 'youtube', src: v } : /^https?:\/\//.test(v) ? { kind: 'video', src: v } : null;
+      if (!film) return toast('Вставьте ссылку на видео или выберите файл');
+      const me = { id: ST.me?.id || 'me', name: ST.me?.name || 'Вы' }, seat = seatId(4, 6);
+      const room = { code: 'SOLO', title: 'Мой зал', hostId: me.id, you: { host: true, seat }, seats: { [seat]: { uid: me.id, name: me.name } },
+        screening: { title: 'Мой зал', film, startsAt: new Date().toISOString(), rows: 6, cols: 12, seating: 'open', note: '' } };
+      let local = new MediaStream();
+      if (fake) local = fakeMedia(me.name, 192);
+      else { try { (await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 192 }, height: { ideal: 192 }, frameRate: { ideal: 12, max: 15 }, aspectRatio: 1 } })).getTracks().forEach((t) => local.addTrack(t)); } catch { /* no camera: an avatar on the seat */ } }
+      hall?.destroy(); hall = await createHall({ room, me, local, myJoin: new Date().toISOString(), members: [], solo: true });
+    };
+    win.replaceChildren(h('div', { class: 'cn-home' },
+      h('div', { class: 'cn-hero' }, h('span', { class: 'cn-kicker' }, 'VITON13 · Кинотеатр'), h('h1', null, 'Мой зал'),
+        h('p', null, 'Зал на шесть рядов, вы в центре, на вашем кресле — ваша камера. Зрители смогут прийти по билетам, когда обновится viton13.com.'),
+        h('div', { class: 'cn-redeem', style: 'max-width:640px' }, src, h('button', { class: 'btn', onclick: () => go('video') }, 'Смотреть')),
+        h('div', { class: 'cn-hero-acts', style: 'margin-top:12px' }, h('button', { class: 'btn ghost', onclick: () => fileIn.click() }, 'Фильм с этого Mac'), h('button', { class: 'btn ghost', onclick: () => go('screen') }, 'Показ экрана'), h('button', { class: 'btn ghost', onclick: boot }, 'Назад'), fileIn),
+        fileName),
+      h('p', { class: 'cn-fine' }, 'Показывайте фильмы, на которые у вас есть права.')));
+    src.addEventListener('keydown', (e) => { if (e.key === 'Enter') go('video'); });
+  }
+
   async function enterHall(code) {
     const room = (await api('/api/cinema/screenings/' + code)).room;
     if (!room.you.seat) throw Object.assign(new Error('Сначала выберите место'), { status: 409 });
@@ -273,7 +306,7 @@ export default function view(ctx, arg) {
     hall?.destroy(); hall = await createHall({ room, me, local, myJoin, members: joined.members });
   }
 
-  async function createHall({ room, me, local, myJoin, members }) {
+  async function createHall({ room, me, local, myJoin, members, solo = false }) {
     const code = room.code, s = room.screening, host = room.you.host;
     let seats = { ...room.seats }, mySeat = room.you.seat, left = false, filmState = null, screenStream = null, screenId = null, chatOpen = false, unread = 0;
     const camOn = { v: local.getVideoTracks().length > 0 }, talk = { v: false };
@@ -311,17 +344,18 @@ export default function view(ctx, arg) {
     const filmV = h('video', { playsinline: true, preload: 'auto', crossorigin: 'anonymous' }); filmV.volume = +vol.value;
     vol.oninput = () => { filmV.volume = +vol.value; store.set('vit.cinema.vol', vol.value); ytp?.setVolume?.(+vol.value * 100); };
     let player = null, ytp = null;
-    if (s.film.kind === 'video') { filmV.src = filmUrl(s.film.src); filmV.addEventListener('error', () => toast('Фильм не открывается по этой ссылке')); player = filePlayer(filmV); }
+    if (s.film.kind === 'file') { filmV.src = s.film.src; player = filePlayer(filmV); }
+    else if (s.film.kind === 'video') { filmV.src = filmUrl(s.film.src); filmV.addEventListener('error', () => toast('Фильм не открывается по этой ссылке')); player = filePlayer(filmV); }
     else if (s.film.kind === 'youtube') { yt.classList.remove('hide'); player = await ytPlayer(yt, s.film.src).catch(() => null); ytp = player; }
 
     // ── 3D ──
     let scene3d = null;
-    try { scene3d = await createScene({ stage, s, seatsRef: () => seats, me, mySeat, filmV: s.film.kind === 'video' ? filmV : null, onDoubleSeat: swapSeat }); }
+    try { scene3d = await createScene({ stage, s, seatsRef: () => seats, me, mySeat, filmV: s.film.kind === 'video' || s.film.kind === 'file' ? filmV : null, onDoubleSeat: swapSeat }); }
     catch (e) { console.warn('[cinema] 3D off', e); }
     if (!scene3d) stage.append(flatHall());
 
     // ── the mesh ──
-    const mesh = createMesh({
+    const mesh = solo ? soloMesh() : createMesh({
       api, base: `/api/cinema/screenings/${code}`, me, local, ice: ST.ice,
       onPeer: (p) => { viewers.set(p.id, { name: p.name, stream: null, cam: true }); paintCount(); },
       onTrack: (p, stream) => {
@@ -405,6 +439,7 @@ export default function view(ctx, arg) {
 
     async function swapSeat(id) {
       if (seats[id]) return toast('Это место занято');
+      if (solo) { const mine = seats[mySeat]; delete seats[mySeat]; seats[id] = mine; mySeat = id; scene3d?.moveTo(id); paintCount(); return toast('Вы пересели: ' + seatName(id)); }
       try { const d = await api(`/api/cinema/screenings/${code}/seat`, { body: { seat: id } }); seats = d.room.seats; mySeat = id; mesh.broadcast({ k: 'state', seat: id }); scene3d?.moveTo(id); paintCount(); toast('Вы пересели: ' + seatName(id)); }
       catch (e) { toast(e.message); }
     }
