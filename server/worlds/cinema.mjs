@@ -12,11 +12,12 @@ import { can } from '../plan.mjs';
 
 const CODE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/, KEY = /^[A-Z0-9]{4}$/, MEMBER = /^[A-Za-z0-9_-]{1,128}$/, CURSOR = /^[0-9TZ:.#a-z-]{10,40}$/, SEAT = /^R\d{1,2}S\d{1,2}$/;
 const TYPES = new Set(['offer', 'answer', 'candidate', 'bye']);
+const FILM_KINDS = new Set(['video', 'youtube', 'site', 'file', 'screen']);
 const CODES = {
   VITON_ID_REQUIRED: 'Войдите в VITON ID на viton13.com', ROOM_NOT_FOUND: 'Сеанс не найден, закончился или отменён', ROOM_FULL: 'В зале уже двенадцать человек',
   NOT_A_MEMBER: 'Вы не в зале', PERSON_NOT_IN_ROOM: 'Этот зритель уже вышел', TOO_MANY_REQUESTS: 'Слишком часто. Подождите немного', PAYLOAD_TOO_LARGE: 'Слишком большое сообщение',
   RTC_NOT_CONFIGURED: 'Кинотеатр на viton13.com ещё не включён', RTC_UNAVAILABLE: 'Сервис кинотеатра сейчас недоступен', CROSS_ORIGIN_REQUEST: 'Сайт не принял запрос', ORIGIN_REQUIRED: 'Сайт не принял запрос',
-  TITLE_REQUIRED: 'Назовите сеанс', INVALID_FILM: 'Нужна ссылка на видеофайл (.mp4 / .webm) или на YouTube', INVALID_TIME: 'Время сеанса — от сегодня и не дальше двух месяцев', INVALID_HALL: 'Зал — от 3 до 8 рядов и от 6 до 12 мест',
+  TITLE_REQUIRED: 'Назовите сеанс', INVALID_FILM: 'Нужна ссылка https:// на фильм — YouTube, сайт с плеером или файл .mp4 / .webm (не на этот компьютер и не в домашнюю сеть), или файл с Mac', INVALID_TIME: 'Время сеанса — от сегодня и не дальше двух месяцев', INVALID_HALL: 'Зал — от 3 до 8 рядов и от 6 до 12 мест',
   HOST_ONLY: 'Это может только тот, кто создал сеанс', NOT_ADMITTED: 'Сначала нужен билет', TICKET_NOT_FOUND: 'Такого билета нет', TICKET_USED: 'По этому билету уже вошли',
   SEAT_TAKEN: 'Это место уже занято', SEAT_RESERVED: 'Это место по чужому билету', SEAT_ASSIGNED: 'По билету у вас другое место', HALL_FULL: 'В зале уже двенадцать человек',
   SEAT_HAS_TICKET: 'На это место уже есть билет', TOO_MANY_TICKETS: 'Билетов на сеанс — до шестидесяти', HALL_TOO_SMALL: 'В новом зале не поместятся те, кто уже сидит', INVALID_SEAT: 'Такого места нет',
@@ -79,8 +80,20 @@ export async function handle({ req, res, url, user, seg, method, json, fail, bod
     if (r.status >= 400 || !r.data?.ok) return json(r.status >= 400 ? r.status : 502, { ok: false, code: r.data?.code || 'site', message: CODES[r.data?.code] || 'Сайт не смог выполнить запрос' });
     json(ok, r.data);
   };
-  const clean = (b) => ({ title: String(b.title || '').slice(0, 80), film: { kind: String(b.film?.kind || 'video').slice(0, 10), src: String(b.film?.src || '').slice(0, 600) }, startsAt: String(b.startsAt || '').slice(0, 40),
-    rows: Number(b.rows) || 0, cols: Number(b.cols) || 0, seating: b.seating === 'assigned' ? 'assigned' : 'open', note: String(b.note || '').slice(0, 200), ...(typeof b.cancelled === 'boolean' ? { cancelled: b.cancelled } : {}) });
+  // the film of a screening: a link (https, public addresses only — the same check as the film proxy), the name of a file on the host's Mac, or a shared screen
+  const cleanFilm = async (f = {}) => {
+    const kind = String(f?.kind || 'video'), raw = String(f?.src || '').trim();
+    if (!FILM_KINDS.has(kind)) return null;
+    if (kind === 'screen') return { kind, src: '' };
+    if (kind === 'file') { const name = raw.split(/[/\\]/).pop().replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 160); return name ? { kind, src: name } : null; }
+    if (raw.length > 600) return null;
+    const u = await allowedFilm(raw); return u ? { kind, src: u.href } : null;                  // https only (the development stand-in of the site aside)
+  };
+  const clean = async (b) => {
+    const film = await cleanFilm(b.film);
+    return film && { title: String(b.title || '').slice(0, 80), film, startsAt: String(b.startsAt || '').slice(0, 40),
+      rows: Number(b.rows) || 0, cols: Number(b.cols) || 0, seating: b.seating === 'assigned' ? 'assigned' : 'open', note: String(b.note || '').slice(0, 200), ...(typeof b.cancelled === 'boolean' ? { cancelled: b.cancelled } : {}) };
+  };
   const seats = (list) => (Array.isArray(list) ? list.map(String).filter((s) => SEAT.test(s)).slice(0, 96) : []);
 
   // hosting a screening (creating it, issuing tickets, changing it) is part of the VIT subscription; any VITON ID may come by ticket
@@ -89,14 +102,15 @@ export async function handle({ req, res, url, user, seg, method, json, fail, bod
   if (what === 'mine' && method === 'GET') { await pass('GET', '/api/rtc/cinema/mine'); return true; }
   if (what === 'redeem' && method === 'POST') { const b = await body(); await pass('POST', '/api/rtc/cinema/redeem', { ticket: String(b.ticket || '').slice(0, 20) }); return true; }
   if (what === 'screenings' && !seg[3] && method === 'POST') {
-    const b = await body(), t = b.tickets || {};
-    await pass('POST', '/api/rtc/rooms', { kind: 'cinema', screening: clean(b.screening || {}), tickets: { count: Math.max(0, Math.min(Number(t.count) || 0, 30)), seats: seats(t.seats), uses: Math.max(1, Math.min(Number(t.uses) || 1, 12)) } }, 201); return true;
+    const b = await body(), t = b.tickets || {}, screening = await clean(b.screening || {});
+    if (!screening) { fail(400, CODES.INVALID_FILM); return true; }
+    await pass('POST', '/api/rtc/rooms', { kind: 'cinema', screening, tickets: { count: Math.max(0, Math.min(Number(t.count) || 0, 30)), seats: seats(t.seats), uses: Math.max(1, Math.min(Number(t.uses) || 1, 12)) } }, 201); return true;
   }
   if (what === 'screenings' && seg[3]) {
     const code = String(seg[3]).toUpperCase(); if (!CODE.test(code)) { fail(404, CODES.ROOM_NOT_FOUND); return true; }
     const base = `/api/rtc/rooms/${code}`;
     if (!seg[4] && method === 'GET') { await pass('GET', base); return true; }
-    if (!seg[4] && method === 'PATCH') { await pass('PATCH', base, clean(await body())); return true; }
+    if (!seg[4] && method === 'PATCH') { const screening = await clean(await body()); if (!screening) { fail(400, CODES.INVALID_FILM); return true; } await pass('PATCH', base, screening); return true; }
     if (seg[4] === 'tickets' && method === 'POST') { const b = await body(); await pass('POST', base + '/tickets', { count: Math.max(1, Math.min(Number(b.count) || 1, 30)), seats: seats(b.seats), uses: Math.max(1, Math.min(Number(b.uses) || 1, 12)), label: String(b.label || '').slice(0, 40) }); return true; }
     if (seg[4] === 'tickets' && seg[5] && method === 'DELETE') { const key = String(seg[5]).toUpperCase(); if (!KEY.test(key)) { fail(404, CODES.TICKET_NOT_FOUND); return true; } await pass('DELETE', `${base}/tickets?t=${key}`); return true; }
     if (seg[4] === 'seat' && method === 'POST') { const b = await body(), seat = b.seat == null ? null : String(b.seat); if (seat && !SEAT.test(seat)) { fail(400, CODES.INVALID_SEAT); return true; } await pass('POST', base + '/seat', { seat }); return true; }

@@ -64,7 +64,18 @@ select.cn-input { appearance: none; background-image: linear-gradient(45deg, tra
 .cn-editor { display: grid; align-content: start; gap: 16px; padding: 32px 40px; overflow-y: auto; max-width: 720px; width: 100%; justify-self: center; }
 .cn-editor h2 { font-size: 28px; font-weight: 600; letter-spacing: -0.025em; margin: 0; }
 .cn-form { display: grid; gap: 16px; } .cn-form label { display: grid; gap: 7px; } .cn-form label > span { font-size: 13px; font-weight: 600; color: var(--cn-mute); }
+.cn-form .cn-field { display: grid; gap: 7px; } .cn-form .cn-field > span { font-size: 13px; font-weight: 600; color: var(--cn-mute); }
 .cn-two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+/* where the film comes from: a small mark, then one line on what syncs by itself */
+.cn-src { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px 0 7px; border-radius: 999px; justify-self: start; align-self: start; max-width: 100%; min-width: 0;
+  background: rgba(255, 255, 255, 0.08); box-shadow: inset 0 0 0 0.5px var(--cn-line); font-size: 12px; line-height: 1; color: var(--cn-ink); white-space: nowrap; overflow: hidden; }
+.cn-src b { font-weight: 600; flex: none; } .cn-src small { color: var(--cn-mute); font-size: 12px; overflow: hidden; text-overflow: ellipsis; min-width: 0; } .cn-src small::before { content: '·'; margin-right: 6px; }
+.cn-src-ic { display: grid; place-items: center; color: var(--cn-gold); flex: none; } .cn-src-ic .icon { width: 14px; height: 14px; }
+.cn-src-line { display: grid; gap: 6px; justify-items: start; } .cn-src-line:empty { display: none; } .cn-hint.err { color: #ff8a80; }
+.cn-file-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.cn-poster-src { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; } .cn-poster-src small { color: var(--cn-mute); font-size: 13px; line-height: 1.4; }
+.cn-show-t .cn-src { height: 20px; font-size: 11px; padding: 0 8px 0 6px; margin: 2px 0; } .cn-show-t .cn-src-ic .icon { width: 12px; height: 12px; }
+.cn-home .cn-src-line { max-width: 640px; }
 .cn-check { display: flex !important; grid-template-columns: none; align-items: center; gap: 10px !important; font-size: 14px; color: var(--cn-ink); }
 .cn-check input { width: 18px; height: 18px; accent-color: var(--cn-me); }
 .cn-mini { display: grid; gap: 4px; justify-items: center; padding: 14px; border-radius: 16px; background: rgba(0, 0, 0, 0.25); }
@@ -142,7 +153,19 @@ select.cn-input { appearance: none; background-image: linear-gradient(45deg, tra
 .cn-reacts button { width: 38px; height: 38px; border-radius: 50%; font-size: 21px; transition: transform 0.18s var(--spring); } .cn-reacts button:hover { transform: scale(1.22); }
 .cn-hfine { position: absolute; left: 20px; bottom: 26px; font-size: 11.5px; color: rgba(245, 245, 247, 0.34); max-width: 230px; pointer-events: none; }
 .cn-yt { position: absolute; left: 50%; top: 12%; translate: -50% 0; width: min(76%, 1100px); aspect-ratio: 16 / 9; border-radius: 18px; overflow: hidden; z-index: 2; box-shadow: 0 30px 80px rgba(0, 0, 0, 0.7), 0 0 120px rgba(120, 130, 255, 0.18); }
-.cn-yt iframe { width: 100%; height: 100%; border: 0; }
+.cn-yt iframe, .cn-yt webview { width: 100%; height: 100%; border: 0; display: flex; background: #000; }
+.cn-main { container-type: size; }
+.cn-yt { top: max(64px, 9%); width: min(76%, 1100px, calc((100cqh - 250px) * 16 / 9)); }      /* the flat window never runs under the control bar */
+.cn-site-hint { position: absolute; left: 50%; bottom: 84px; translate: -50% 0; z-index: 3; display: grid; justify-items: center; gap: 6px; width: max-content; max-width: calc(100% - 24px); }
+.cn-site-row { display: flex; align-items: center; gap: 12px; padding: 6px 6px 6px 16px; border-radius: 999px; font-size: 13px;
+  background: rgba(20, 20, 24, 0.78); -webkit-backdrop-filter: blur(24px) saturate(1.4); backdrop-filter: blur(24px) saturate(1.4); box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.14); }
+.cn-site-row > span { color: var(--cn-mute); } .cn-site-row .btn { flex: none; }
+.cn-site-hint small { max-width: 560px; text-align: center; font-size: 11.5px; line-height: 1.4; color: rgba(245, 245, 247, 0.42); }
+.cn-count { position: absolute; inset: 0; z-index: 4; display: grid; place-items: center; pointer-events: none; font-size: 150px; font-weight: 600; letter-spacing: -0.04em; color: #fff; text-shadow: 0 10px 60px rgba(0, 0, 0, 0.7); font-variant-numeric: tabular-nums; }
+.cn-count.go { font-size: 64px; color: var(--cn-gold); }
+.cn-pick { position: absolute; left: 50%; top: 42%; translate: -50% -50%; z-index: 3; display: grid; gap: 10px; justify-items: center; text-align: center; padding: 26px 28px; border-radius: 24px; width: min(440px, calc(100% - 32px));
+  background: rgba(16, 16, 20, 0.82); -webkit-backdrop-filter: blur(30px) saturate(1.4); backdrop-filter: blur(30px) saturate(1.4); box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.14), 0 30px 80px rgba(0, 0, 0, 0.6); }
+.cn-pick b { font-size: 18px; font-weight: 600; letter-spacing: -0.012em; word-break: break-word; } .cn-pick > span:not(.cn-quiet-ic) { color: var(--cn-mute); font-size: 14px; line-height: 1.45; } .cn-pick .btn { margin-top: 4px; }
 .cn-chat { width: 300px; display: flex; flex-direction: column; background: rgba(16, 16, 20, 0.92); border-left: 0.5px solid rgba(255, 255, 255, 0.1); }
 .cn-chat-top { display: flex; align-items: center; justify-content: space-between; padding: 16px 14px 10px 18px; } .cn-chat-top b { font-size: 15px; }
 .cn-chat-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 6px 14px; }
@@ -162,5 +185,7 @@ select.cn-input { appearance: none; background-image: linear-gradient(45deg, tra
   .cn-win.cn-hall { grid-template-columns: 1fr; } .cn-chat { position: absolute; inset: 0 0 0 auto; width: min(320px, 90%); z-index: 3; }
   .cn-seek { width: 110px; } .cn-volbox, .cn-hfine { display: none; } .cn-bar { gap: 6px; padding: 6px 8px; }
   .cn-tc { grid-template-columns: 1fr 84px; } .cn-tc::before, .cn-tc::after { right: 72px; }
+  .cn-site-hint { bottom: 70px; } .cn-site-row { flex-wrap: wrap; justify-content: center; text-align: center; border-radius: 18px; padding: 10px 12px; } .cn-count { font-size: 96px; }
+  .cn-yt { width: min(calc(100% - 24px), calc((100cqh - 230px) * 16 / 9)); top: 70px; }
 }
 @media (prefers-reduced-motion: reduce) { .cn-win { animation: none; } }

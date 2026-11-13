@@ -22,9 +22,13 @@ export const CINEMA_AFTER_START_MS = 8 * 60 * 60 * 1000;      // a screening sta
 export const CINEMA_AHEAD_MS = 60 * 24 * 60 * 60 * 1000;       // and can be planned this far ahead
 /** Row names as cinemas print them: А, Б, В… (no Ё, Й). */
 export const ROW_LETTERS = "АБВГДЕЖЗ";
-export const FILM_KINDS = new Set(["video", "screen", "youtube"]);
+/** Where a film comes from: a file by link, the host's screen, YouTube, a player
+ *  site (Rutube, VK Video, Vimeo… — shown in the app's own browser) or a file on
+ *  the host's Mac, streamed live to the hall — the site keeps only its name. */
+export const FILM_KINDS = new Set(["video", "screen", "youtube", "site", "file"]);
 const TICKET_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const YT = /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/|live\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/;
+const YT_LIST = /youtube\.com\/(?:playlist|watch)\?(?:.*&)?list=[A-Za-z0-9_-]{10,64}/;
 
 export const isCinema = (room) => room?.kind === "cinema";
 export const seatId = (row, num) => `R${row}S${num}`;
@@ -44,12 +48,17 @@ export function normalizeScreening(input = {}, now = Date.now(), current = null)
   if (!title) return { error: "TITLE_REQUIRED" };
   const kind = String(src.film?.kind || "video");
   if (!FILM_KINDS.has(kind)) return { error: "INVALID_FILM" };
-  let url = String(src.film?.src || "").trim().slice(0, 600);
+  const raw = String(src.film?.src || "").trim();
+  let url = raw.slice(0, 600);
   if (kind === "screen") url = "";
-  else {
+  else if (kind === "file") {                                    // only a name to show: no path, no control characters
+    url = raw.split(/[/\\]/).pop().replace(/[\p{Cc}]/gu, "").trim().slice(0, 160);
+    if (!url) return { error: "INVALID_FILM" };
+  } else {
+    if (kind === "site" && raw.length > 600) return { error: "INVALID_FILM" };
     let parsed; try { parsed = new URL(url); } catch { return { error: "INVALID_FILM" }; }
-    if (!/^https?:$/.test(parsed.protocol)) return { error: "INVALID_FILM" };
-    if (kind === "youtube" && !YT.test(url)) return { error: "INVALID_FILM" };
+    if (!/^https?:$/.test(parsed.protocol) || (kind === "site" && parsed.protocol !== "https:")) return { error: "INVALID_FILM" };
+    if (kind === "youtube" && !YT.test(url) && !YT_LIST.test(url)) return { error: "INVALID_FILM" };
   }
   const startsAt = Date.parse(src.startsAt || "");
   if (!Number.isFinite(startsAt) || startsAt < now - CINEMA_AFTER_START_MS || startsAt > now + CINEMA_AHEAD_MS) return { error: "INVALID_TIME" };

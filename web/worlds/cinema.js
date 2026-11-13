@@ -6,6 +6,7 @@ import { createMesh, fakeMedia } from '/worlds/rtc.js';
 // the hall on its own: the same calls as the mesh, nobody on the other end
 const soloMesh = () => ({ peers: new Map(), setVideoLimit() {}, start() {}, send() {}, broadcast() {}, localTime: (_p, at) => at, addStream() {}, removeStream() {}, leave() {} });
 import { emojiPicker } from '/worlds/emoji.js';
+import { parseFilmLink, fileName } from '/worlds/cinema-links.js';
 
 const SVG = (d) => `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
 const I = {
@@ -24,7 +25,30 @@ const I = {
   copy: SVG('<rect x="8.5" y="8.5" width="11" height="11" rx="2.5"/><path d="M15.5 8.5v-2A2 2 0 0 0 13.5 4.5h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2"/>'),
   close: SVG('<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>'),
   back: SVG('<path d="M14.5 5.5L8 12l6.5 6.5"/>'),
+  yt: SVG('<rect x="3" y="6" width="18" height="12" rx="4"/><path d="M10.5 9.6v4.8l4-2.4z" fill="currentColor" stroke="none"/>'),
+  globe: SVG('<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.6 2.4 3.8 5.2 3.8 8.5s-1.2 6.1-3.8 8.5c-2.6-2.4-3.8-5.2-3.8-8.5s1.2-6.1 3.8-8.5z"/>'),
+  link: SVG('<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>'),
+  mac: SVG('<rect x="5" y="5.5" width="14" height="9.5" rx="1.8"/><path d="M3 18.5h18"/>'),
 };
+// where a film comes from: a small mark and one line on what goes in sync by itself
+const SOURCES = {
+  youtube: { icon: 'yt', label: 'YouTube', hint: 'Пуск, пауза, перемотка и скорость — сами у всех. Идёт плоским окном поверх зала.' },
+  video: { icon: 'link', label: 'Ссылка на файл', hint: 'Пуск, пауза, перемотка и скорость — сами у всех, на объёмном экране зала.' },
+  site: { icon: 'globe', label: 'Сайт', hint: 'В приложении пуск, пауза и перемотка общие, если сайт даёт управлять плеером; если нет — старт по общему отсчёту 3…2…1.' },
+  file: { icon: 'mac', label: 'Файл с Mac', hint: 'Идёт с Mac ведущего живым потоком: его пауза и перемотка — сразу у всех.' },
+  screen: { icon: 'screen', label: 'Показ экрана', hint: 'Ведущий показывает свой экран со звуком — зрители видят всё, что он включит.' },
+};
+const FILE_NOTE = 'Файл не загружается никуда — он идёт с вашего Mac прямо зрителям, пока сеанс открыт (комфортно до 5–6 зрителей)';
+const FILE_ACCEPT = 'video/mp4,video/webm,video/quicktime,video/x-m4v,video/x-matroska,.mp4,.webm,.mov,.m4v,.mkv';
+const SITE_HINT = 'Сайт не даёт управлять плеером — нажмите ▶ одновременно по отсчёту';
+const inApp = /Electron/.test(navigator.userAgent);
+const canHls = () => { try { return !!document.createElement('video').canPlayType('application/vnd.apple.mpegurl'); } catch { return false; } };
+function filmInfo(film = {}) {
+  const base = SOURCES[film.kind] || SOURCES.video;
+  if (film.kind === 'site') { const r = parseFilmLink(film.src); return { ...base, detail: r.error ? '' : r.name }; }
+  if (film.kind === 'file') return { ...base, detail: film.src || '' };
+  return { ...base, detail: '' };
+}
 const ROWS = 'АБВГДЕЖЗ';
 const REACTIONS = ['👏', '😂', '😮', '❤️', '🔥', '😭', '🍿', '👍'];
 const YT = /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/|live\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/;
@@ -47,6 +71,8 @@ export default function view(ctx, arg) {
   const fake = new URLSearchParams(location.search).get('fake') === '1' || store.get('vit.meet.fake') === '1';
   const win = h('div', { class: 'cn-win' }), root = h('div', { class: 'view cn' }, win);
   const ic = (name) => h('span', { class: 'cn-i', html: I[name] });
+  const mark = (film, detail = true) => { const f = filmInfo(film); return h('span', { class: 'cn-src', title: f.hint }, h('span', { class: 'cn-src-ic', html: I[f.icon] }), h('b', null, f.label), detail && f.detail ? h('small', null, f.detail) : null); };
+  const picked = new Map();                                                           // screening code → the File the host chose on this Mac (never uploaded)
   let alive = true, ST = null, hall = null, refresh = null;
 
   function quiet(title, text, ...actions) {
@@ -98,7 +124,7 @@ export default function view(ctx, arg) {
       const d = await api('/api/cinema/mine'); if (!alive || !lists.isConnected) return;
       const card = (r, host) => h('button', { class: 'cn-show' + (r.screening.cancelled ? ' off' : ''), onclick: () => (host ? hostView(r.code) : ticketView(r)) },
         h('span', { class: 'cn-show-poster', style: `--h:${hue(r.code)}` }, ic('film')),
-        h('span', { class: 'cn-show-t' }, h('b', null, r.title), h('small', null, r.screening.cancelled ? 'Сеанс отменён' : when(r.screening.startsAt)),
+        h('span', { class: 'cn-show-t' }, h('b', null, r.title), mark(r.screening.film, false), h('small', null, r.screening.cancelled ? 'Сеанс отменён' : when(r.screening.startsAt)),
           h('small', { class: 'cn-show-sub' }, host ? `Вы ведёте · ${r.viewers} из ${r.max - 1} зрителей` : r.you.seat ? `Ваше место: ${seatName(r.you.seat)}` : 'Билет есть — выберите место')));
       lists.replaceChildren(
         h('section', null, h('h3', null, 'Мои сеансы'), d.hosting.length ? h('div', { class: 'cn-shows' }, d.hosting.map((r) => card(r, true))) : h('p', { class: 'cn-empty' }, 'Вы ещё не создали сеанс.')),
@@ -119,9 +145,13 @@ export default function view(ctx, arg) {
     const s = room?.screening || { title: '', film: { kind: 'video', src: '' }, startsAt: new Date(Date.now() + 3600e3).toISOString(), rows: 5, cols: 10, seating: 'open', note: '' };
     const local = (iso) => { const d = new Date(iso); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); };
     const title = h('input', { class: 'cn-input', value: s.title, maxlength: 80, placeholder: 'Например, «Интерстеллар» в пятницу', 'aria-label': 'Название сеанса' });
-    let kind = s.film.kind, seating = s.seating;
-    const src = h('input', { class: 'cn-input', value: s.film.src, placeholder: 'https://…/film.mp4', 'aria-label': 'Ссылка на фильм' });
-    const kindNote = h('small', { class: 'cn-hint' });
+    let seating = s.seating, source = s.film.kind === 'file' ? 'file' : s.film.kind === 'screen' ? 'screen' : 'link', film = { ...s.film }, file = room ? picked.get(room.code) || null : null, linkErr = '';
+    const src = h('input', { class: 'cn-input', value: source === 'link' ? s.film.src : '', placeholder: 'Ссылка на фильм или серию — YouTube, Rutube, VK Видео, Vimeo, OK, .mp4…', autocomplete: 'off', spellcheck: 'false', 'aria-label': 'Ссылка на фильм или серию' });
+    const fileIn = h('input', { type: 'file', accept: FILE_ACCEPT, hidden: true });
+    const fileRow = h('div', { class: 'cn-file-row' }, h('button', { type: 'button', class: 'btn ghost', onclick: () => fileIn.click() }, 'Выбрать файл с Mac'), fileIn);
+    const kindNote = h('div', { class: 'cn-src-line' });
+    fileIn.onchange = () => { const f = fileIn.files?.[0]; if (f) { file = f; paintKind(); } };
+    src.addEventListener('input', () => paintKind());
     const time = h('input', { class: 'cn-input', type: 'datetime-local', value: local(s.startsAt), 'aria-label': 'Начало' });
     const rows = h('select', { class: 'cn-input' }, [3, 4, 5, 6, 7, 8].map((n) => h('option', { value: n, selected: n === s.rows }, `${n} рядов`.replace('3 рядов', '3 ряда').replace('4 рядов', '4 ряда')))),
       cols = h('select', { class: 'cn-input' }, [6, 7, 8, 9, 10, 11, 12].map((n) => h('option', { value: n, selected: n === s.cols }, `${n} мест в ряду`)));
@@ -130,19 +160,36 @@ export default function view(ctx, arg) {
     const sharedRow = h('label', { class: 'cn-check' + (seating === 'assigned' ? ' hide' : '') }, shared, h('span', null, 'Один общий код на всех (до 11 человек)'));
     const preview = h('div', { class: 'cn-mini' });
     const seg = (items, cur, on) => { const box = h('div', { class: 'cn-seg' }); const paint = (v) => box.replaceChildren(...items.map(([id, t]) => h('button', { type: 'button', class: id === v ? 'on' : '', onclick: () => { on(id); paint(id); } }, t))); paint(cur); return box; };
-    const paintKind = () => { src.classList.toggle('hide', kind === 'screen'); src.placeholder = kind === 'youtube' ? 'https://youtube.com/watch?v=…' : 'https://…/film.mp4';
-      kindNote.textContent = { video: 'Прямая ссылка на файл .mp4 / .webm. Фильм идёт у каждого зрителя со своего устройства, а пауза и перемотка — общие.', screen: 'Вы показываете свой экран со звуком: подходит для любого источника. Нагрузка на ваш интернет растёт с числом зрителей — лучше до 5–6 человек.', youtube: 'YouTube нельзя натянуть на объёмный экран — он идёт плоским окном поверх зала, синхронно у всех.' }[kind]; };
+    // one field: what the link is, is recognised as it is pasted
+    function paintKind() {
+      src.classList.toggle('hide', source !== 'link'); fileRow.classList.toggle('hide', source !== 'file'); linkErr = '';
+      const hint = (text, cls = '') => h('small', { class: 'cn-hint ' + cls }, text);
+      if (source === 'screen') { film = { kind: 'screen', src: '' }; return kindNote.replaceChildren(mark(film), hint('Вы показываете свой экран со звуком: подходит для любого источника. Нагрузка на ваш интернет растёт с числом зрителей — лучше до 5–6 человек.')); }
+      if (source === 'file') {
+        film = { kind: 'file', src: file ? fileName(file.name) : s.film.kind === 'file' ? s.film.src : '' };
+        return kindNote.replaceChildren(...(film.src ? [mark(film)] : []), hint(FILE_NOTE + '.'), hint(file || !film.src ? 'Ваша пауза и перемотка — сразу у всех.' : 'Перед показом выберите этот файл ещё раз — в сеансе хранится только его имя.'));
+      }
+      const v = src.value.trim();
+      if (!v) { film = { kind: 'video', src: '' }; return kindNote.replaceChildren(hint('Вставьте ссылку — вид определится сам: YouTube, сайт с плеером (Rutube, VK Видео, Vimeo, Dailymotion, OK и любой другой) или прямая ссылка на файл .mp4 / .webm.')); }
+      const r = parseFilmLink(v, { hls: canHls() });
+      if (r.error) { linkErr = r.message; film = { kind: 'video', src: '' }; return kindNote.replaceChildren(hint(r.message, 'err')); }
+      film = { kind: r.kind, src: r.src };
+      kindNote.replaceChildren(mark(film), hint(SOURCES[r.kind].hint), r.kind === 'site' && !r.embed ? hint('Откроется страница сайта целиком — в плеер на ней нужно будет нажать самому.') : null);
+    }
     const paintMini = () => { const R = +rows.value, C = +cols.value, half = Math.floor(C / 2); preview.replaceChildren(h('i', { class: 'cn-mini-screen' }), ...Array.from({ length: R }, () => h('div', { class: 'cn-mini-row' }, Array.from({ length: C }, (_, i) => h('b', { class: i === half ? 'gap' : '' }))))); };
     rows.onchange = paintMini; cols.onchange = paintMini;
     const save = h('button', { class: 'btn lg', onclick: async () => {
+      paintKind();
+      if (source === 'link' && !film.src) return toast(linkErr || 'Вставьте ссылку на фильм или серию');
+      if (source === 'file' && !film.src) return toast('Выберите файл с Mac');
       save.disabled = true;
-      const screening = { title: title.value, film: { kind, src: src.value.trim() }, startsAt: new Date(time.value).toISOString(), rows: +rows.value, cols: +cols.value, seating };
+      const screening = { title: title.value, film: { ...film }, startsAt: new Date(time.value).toISOString(), rows: +rows.value, cols: +cols.value, seating };
       try {
-        if (room) { await api('/api/cinema/screenings/' + room.code, { method: 'PATCH', body: screening }); hostView(room.code); toast('Сеанс обновлён'); }
+        if (room) { await api('/api/cinema/screenings/' + room.code, { method: 'PATCH', body: screening }); if (file && source === 'file') picked.set(room.code, file); hostView(room.code); toast('Сеанс обновлён'); }
         else {
           const n = Math.max(1, Math.min(+count.value || 1, 30));
           const tickets = seating === 'assigned' ? { count: 0, seats: bestSeats(+rows.value, +cols.value, n) } : shared.checked ? { count: 1, uses: Math.min(n, 11) } : { count: n };
-          const d = await api('/api/cinema/screenings', { body: { screening, tickets } }); hostView(d.room.code, d.room); toast('Сеанс создан — билеты готовы');
+          const d = await api('/api/cinema/screenings', { body: { screening, tickets } }); if (file && source === 'file') picked.set(d.room.code, file); hostView(d.room.code, d.room); toast('Сеанс создан — билеты готовы');
         }
       } catch (e) { save.disabled = false; fail(e); } } }, room ? 'Сохранить' : 'Создать сеанс и билеты');
     win.className = 'cn-win cn-solo';
@@ -151,7 +198,7 @@ export default function view(ctx, arg) {
       h('h2', null, room ? 'Настройки сеанса' : 'Новый сеанс'),
       h('div', { class: 'cn-form' },
         h('label', null, h('span', null, 'Название'), title),
-        h('label', null, h('span', null, 'Фильм'), seg([['video', 'Видео по ссылке'], ['screen', 'Показ экрана'], ['youtube', 'YouTube']], kind, (v) => { kind = v; paintKind(); }), src, kindNote),
+        h('div', { class: 'cn-field' }, h('span', null, 'Фильм или серия'), seg([['link', 'Ссылка'], ['file', 'Файл с Mac'], ['screen', 'Показ экрана']], source, (v) => { source = v; paintKind(); if (v === 'link') src.focus(); }), src, fileRow, kindNote),
         h('label', null, h('span', null, 'Начало'), time),
         h('div', { class: 'cn-two' }, h('label', null, h('span', null, 'Зал'), rows), h('label', null, h('span', null, ' '), cols)),
         preview,
@@ -219,7 +266,8 @@ export default function view(ctx, arg) {
       h('div', { class: 'cn-host-top' },
         h('button', { class: 'cn-back', onclick: home }, ic('back'), 'Кинотеатр'),
         h('div', { class: 'cn-poster', style: `--h:${hue(code)}` }, h('span', { class: 'cn-kicker' }, s.cancelled ? 'Сеанс отменён' : when(s.startsAt)), h('h2', null, room.title),
-          h('small', null, `${{ video: 'Видео по ссылке', screen: 'Показ экрана', youtube: 'YouTube' }[s.film.kind]} · зал ${s.rows}×${s.cols} · ${s.seating === 'assigned' ? 'по местам' : 'свободная рассадка'} · код зала ${code}`)),
+          h('div', { class: 'cn-poster-src' }, mark(s.film), h('small', null, filmInfo(s.film).hint)),
+          h('small', null, `Зал ${s.rows}×${s.cols} · ${s.seating === 'assigned' ? 'по местам' : 'свободная рассадка'} · код зала ${code}`)),
         h('div', { class: 'cn-acts' }, h('button', { class: 'btn lg', disabled: s.cancelled, onclick: () => (room.you.seat ? enterHall(code) : toast('Сначала выберите своё место на схеме — вы тоже сидите в зале')) }, 'Войти в зал'),
           h('button', { class: 'btn ghost', onclick: () => editor(room) }, 'Настройки'),
           h('button', { class: 'btn ghost', onclick: () => copy(room.tickets.filter((t) => t.used.length < t.uses).map((t) => ticketText(room, t)).join('\n\n'), 'Список билетов') }, 'Скопировать все билеты'))),
@@ -251,6 +299,7 @@ export default function view(ctx, arg) {
       h('button', { class: 'cn-back', onclick: home }, ic('back'), 'Кинотеатр'),
       h('div', { class: 'cn-tc', style: `--h:${hue(room.code)}` },
         h('div', { class: 'cn-tc-main' }, h('span', { class: 'cn-kicker' }, 'Билет · VITON13 Кинотеатр'), h('h2', null, room.title), h('span', { class: 'cn-tc-when' }, s.cancelled ? 'Сеанс отменён' : when(s.startsAt)),
+          h('div', { class: 'cn-poster-src' }, mark(s.film), h('small', null, filmInfo(s.film).hint)),
           h('div', { class: 'cn-tc-grid' }, h('span', null, h('small', null, 'Зал'), h('b', null, room.code)), h('span', null, h('small', null, 'Место'), seatLine), h('span', null, h('small', null, 'Ведёт'), h('b', null, room.hostName || '—')))),
         h('div', { class: 'cn-tc-stub' }, h('span', { class: 'cn-tc-ic', html: I.ticket }), h('small', null, s.seating === 'assigned' ? 'место в билете' : 'свободная рассадка'))),
       h('h3', null, s.seating === 'assigned' && room.you.ticketSeat ? 'Ваше место в зале' : 'Выберите место'), mapBox, go,
@@ -262,29 +311,32 @@ export default function view(ctx, arg) {
   // ── the hall on its own: no site, no other viewers — to watch alone or to set everything up ──
   function rehearsal() {
     win.className = 'cn-win cn-solo'; refresh = rehearsal;
-    let kind = 'video', fileUrl = '';
-    const src = h('input', { class: 'cn-input', placeholder: 'Ссылка на видео .mp4 / .webm или YouTube', autocomplete: 'off', spellcheck: 'false', 'aria-label': 'Ссылка на фильм' });
-    const fileIn = h('input', { type: 'file', accept: 'video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov,.m4v', hidden: true });
-    const fileName = h('small', { class: 'cn-empty' }, '');
-    fileIn.onchange = () => { const f = fileIn.files?.[0]; if (!f) return; if (fileUrl) URL.revokeObjectURL(fileUrl); fileUrl = URL.createObjectURL(f); kind = 'file'; fileName.textContent = 'Файл: ' + f.name; src.value = ''; };
-    const go = async (k) => {
-      const v = src.value.trim(), yt = /(?:youtube\.com|youtu\.be)\//i.test(v);
-      const film = k === 'screen' ? { kind: 'screen', src: '' } : kind === 'file' && !v ? { kind: 'file', src: fileUrl } : yt ? { kind: 'youtube', src: v } : /^https?:\/\//.test(v) ? { kind: 'video', src: v } : null;
-      if (!film) return toast('Вставьте ссылку на видео или выберите файл');
+    const src = h('input', { class: 'cn-input', placeholder: 'Ссылка на фильм или серию — YouTube, Rutube, VK Видео, Vimeo, .mp4…', autocomplete: 'off', spellcheck: 'false', 'aria-label': 'Ссылка на фильм или серию' });
+    const fileIn = h('input', { type: 'file', accept: FILE_ACCEPT, hidden: true });
+    const what = h('div', { class: 'cn-src-line' });
+    const paintWhat = () => { const v = src.value.trim(); if (!v) return what.replaceChildren(); const r = parseFilmLink(v, { hls: canHls() });
+      what.replaceChildren(...(r.error ? [h('small', { class: 'cn-hint err' }, r.message)] : [mark({ kind: r.kind, src: r.src }), h('small', { class: 'cn-hint' }, SOURCES[r.kind].hint)])); };
+    src.addEventListener('input', paintWhat);
+    fileIn.onchange = () => { const f = fileIn.files?.[0]; if (f) go('file', f); };
+    const go = async (k, file = null) => {
+      let film;
+      if (k === 'screen') film = { kind: 'screen', src: '' };
+      else if (k === 'file') film = { kind: 'file', src: fileName(file.name) };
+      else { const r = parseFilmLink(src.value, { hls: canHls() }); if (r.error) return toast(r.message); film = { kind: r.kind, src: r.src }; }
       const me = { id: ST.me?.id || 'me', name: ST.me?.name || 'Вы' }, seat = seatId(4, 6);
       const room = { code: 'SOLO', title: 'Мой зал', hostId: me.id, you: { host: true, seat }, seats: { [seat]: { uid: me.id, name: me.name } },
         screening: { title: 'Мой зал', film, startsAt: new Date().toISOString(), rows: 6, cols: 12, seating: 'open', note: '' } };
       let local = new MediaStream();
       if (fake) local = fakeMedia(me.name, 192);
       else { try { (await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 192 }, height: { ideal: 192 }, frameRate: { ideal: 12, max: 15 }, aspectRatio: 1 } })).getTracks().forEach((t) => local.addTrack(t)); } catch { /* no camera: an avatar on the seat */ } }
-      hall?.destroy(); hall = await createHall({ room, me, local, myJoin: new Date().toISOString(), members: [], solo: true });
+      hall?.destroy(); hall = await createHall({ room, me, local, myJoin: new Date().toISOString(), members: [], solo: true, file });
     };
     win.replaceChildren(h('div', { class: 'cn-home' },
       h('div', { class: 'cn-hero' }, h('span', { class: 'cn-kicker' }, 'VITON13 · Кинотеатр'), h('h1', null, 'Мой зал'),
         h('p', null, 'Зал на шесть рядов, вы в центре, на вашем кресле — ваша камера. Зрители смогут прийти по билетам, когда обновится viton13.com.'),
         h('div', { class: 'cn-redeem', style: 'max-width:640px' }, src, h('button', { class: 'btn', onclick: () => go('video') }, 'Смотреть')),
-        h('div', { class: 'cn-hero-acts', style: 'margin-top:12px' }, h('button', { class: 'btn ghost', onclick: () => fileIn.click() }, 'Фильм с этого Mac'), h('button', { class: 'btn ghost', onclick: () => go('screen') }, 'Показ экрана'), h('button', { class: 'btn ghost', onclick: boot }, 'Назад'), fileIn),
-        fileName),
+        what,
+        h('div', { class: 'cn-hero-acts', style: 'margin-top:12px' }, h('button', { class: 'btn ghost', onclick: () => fileIn.click() }, 'Выбрать файл с Mac'), h('button', { class: 'btn ghost', onclick: () => go('screen') }, 'Показ экрана'), h('button', { class: 'btn ghost', onclick: boot }, 'Назад'), fileIn)),
       h('p', { class: 'cn-fine' }, 'Показывайте фильмы, на которые у вас есть права.')));
     src.addEventListener('keydown', (e) => { if (e.key === 'Enter') go('video'); });
   }
@@ -306,9 +358,10 @@ export default function view(ctx, arg) {
     hall?.destroy(); hall = await createHall({ room, me, local, myJoin, members: joined.members });
   }
 
-  async function createHall({ room, me, local, myJoin, members, solo = false }) {
-    const code = room.code, s = room.screening, host = room.you.host;
-    let seats = { ...room.seats }, mySeat = room.you.seat, left = false, filmState = null, screenStream = null, screenId = null, chatOpen = false, unread = 0;
+  async function createHall({ room, me, local, myJoin, members, solo = false, file = null }) {
+    const code = room.code, s = room.screening, host = room.you.host, kind = s.film.kind;
+    const mine = kind === 'file' && host, streamed = kind === 'screen' || (kind === 'file' && !host);   // a file plays on the host's Mac; viewers get it as a live stream
+    let seats = { ...room.seats }, mySeat = room.you.seat, left = false, filmState = null, screenStream = null, castStream = null, fileUrl = '', screenId = null, chatOpen = false, unread = 0;
     const camOn = { v: local.getVideoTracks().length > 0 }, talk = { v: false };
     const viewers = new Map();                                                          // uid → { name, stream, level, cam }
     const seatOf = (uid) => Object.entries(seats).find(([, x]) => x.uid === uid)?.[0];
@@ -335,22 +388,32 @@ export default function view(ctx, arg) {
     const screenB = ctl('screen', 'Показать экран', () => (screenStream ? stopShare() : share()));
     const syncB = ctl('sync', 'Синхронизировать', () => resync());
     const vol = h('input', { class: 'cn-vol', type: 'range', min: 0, max: 1, step: 0.05, value: store.get('vit.cinema.vol') || '0.9', 'aria-label': 'Громкость' });
-    const filmCtl = host ? [s.film.kind !== 'screen' ? playB : null, s.film.kind !== 'screen' ? seek : null, s.film.kind !== 'screen' ? timeL : null, s.film.kind === 'screen' ? screenB : null] : [syncB, s.film.kind !== 'screen' ? timeL : null];
+    const fileIn = h('input', { type: 'file', accept: FILE_ACCEPT, hidden: true });
+    const fileB = ctl('mac', 'Выбрать другой файл с Mac', () => fileIn.click());
+    const filmCtl = host ? [kind !== 'screen' ? playB : null, kind !== 'screen' ? seek : null, kind !== 'screen' ? timeL : null, kind === 'screen' ? screenB : null, mine ? fileB : null] : streamed ? [] : [syncB, timeL];
     const bar = h('div', { class: 'cn-bar' }, talkB, camB, h('span', { class: 'cn-react-wrap' }, reactRow, reactB), chatB, h('i', { class: 'cn-sep' }), ...filmCtl, h('span', { class: 'cn-volbox' }, ic('vol'), vol));
     const fine = h('div', { class: 'cn-hfine' }, 'Перетащите, чтобы осмотреться · двойной щелчок по свободному креслу — пересесть');
-    win.className = 'cn-win cn-hall'; win.replaceChildren(h('div', { class: 'cn-main' }, stage, yt, overlay, top, bar, fine), chat);
+    // a site whose player can't be reached: everyone presses ▶ on one countdown
+    const countB = h('button', { class: 'btn sm', onclick: () => { const at = Date.now() + 3300; mesh.broadcast({ k: 'count', at }); countdown(at); } }, 'Старт для всех через 3…2…1');
+    const siteHint = h('div', { class: 'cn-site-hint hide' }, h('div', { class: 'cn-site-row' }, h('span', null, SITE_HINT), host ? countB : null),
+      inApp ? null : h('small', null, 'Здесь сайт открыт во встроенной рамке: общий пуск и пауза работают в приложении VITON13. Если рамка пустая — сайт не разрешает показывать себя внутри других страниц.'));
+    const countBig = h('div', { class: 'cn-count hide', 'aria-live': 'assertive' });
+    const pickBox = h('div', { class: 'cn-pick hide' }, h('span', { class: 'cn-quiet-ic', html: I.mac }), h('b', null, s.film.src ? `«${s.film.src}»` : 'Фильм с вашего Mac'),
+      h('span', null, `Выберите этот файл на своём Mac. ${FILE_NOTE}.`), h('button', { class: 'btn', onclick: () => fileIn.click() }, 'Выбрать файл с Mac'));
+    win.className = 'cn-win cn-hall'; win.replaceChildren(h('div', { class: 'cn-main' }, stage, yt, overlay, top, siteHint, pickBox, countBig, bar, fine, fileIn), chat);
 
-    // the film element (a texture on the screen), or the host's screen, or YouTube flat
+    // the film element (a texture on the screen), or the host's screen, or YouTube / a player site flat
     const filmV = h('video', { playsinline: true, preload: 'auto', crossorigin: 'anonymous' }); filmV.volume = +vol.value;
-    vol.oninput = () => { filmV.volume = +vol.value; store.set('vit.cinema.vol', vol.value); ytp?.setVolume?.(+vol.value * 100); };
+    vol.oninput = () => { filmV.volume = +vol.value; store.set('vit.cinema.vol', vol.value); ytp?.setVolume?.(+vol.value * 100); scene3d?.setScreenVolume(+vol.value); };
     let player = null, ytp = null;
-    if (s.film.kind === 'file') { filmV.src = s.film.src; player = filePlayer(filmV); }
-    else if (s.film.kind === 'video') { filmV.src = filmUrl(s.film.src); filmV.addEventListener('error', () => toast('Фильм не открывается по этой ссылке')); player = filePlayer(filmV); }
-    else if (s.film.kind === 'youtube') { yt.classList.remove('hide'); player = await ytPlayer(yt, s.film.src).catch(() => null); ytp = player; }
+    if (mine) { player = filePlayer(filmV); filmV.addEventListener('error', () => { if (filmV.getAttribute('src')) toast('Этот файл здесь не воспроизводится — подойдёт .mp4 (H.264), .webm или .mov'); }); }
+    else if (kind === 'video') { filmV.src = /\.m3u8(\?|$)/i.test(s.film.src) ? s.film.src : filmUrl(s.film.src); filmV.addEventListener('error', () => toast('Фильм не открывается по этой ссылке')); player = filePlayer(filmV); }
+    else if (kind === 'youtube') { yt.classList.remove('hide'); player = await ytPlayer(yt, s.film.src).catch(() => null); ytp = player; }
+    else if (kind === 'site') { yt.classList.remove('hide'); player = sitePlayer(yt, s.film.src, paintReach); ytp = player; player.setVolume(+vol.value * 100); }
 
     // ── 3D ──
     let scene3d = null;
-    try { scene3d = await createScene({ stage, s, seatsRef: () => seats, me, mySeat, filmV: s.film.kind === 'video' || s.film.kind === 'file' ? filmV : null, onDoubleSeat: swapSeat }); }
+    try { scene3d = await createScene({ stage, s, seatsRef: () => seats, me, mySeat, filmV: kind === 'video' || mine ? filmV : null, onDoubleSeat: swapSeat }); }
     catch (e) { console.warn('[cinema] 3D off', e); }
     if (!scene3d) stage.append(flatHall());
 
@@ -363,7 +426,7 @@ export default function view(ctx, arg) {
         const v = viewers.get(p.id) || {}; v.stream = stream; v.name = p.name; viewers.set(p.id, v); scene3d?.setFrame(p.id, stream, v.name); flatFrames();
       },
       onState: (p) => { const v = viewers.get(p.id); if (v && p.name) { v.name = p.name; scene3d?.setName(p.id, p.name); } paintCount(); },
-      onGone: (p) => { viewers.delete(p.id); scene3d?.removeFrame(p.id); paintCount(); flatFrames(); if (p.id === room.hostId && !left) toast('Ведущий вышел из зала'); },
+      onGone: (p) => { viewers.delete(p.id); scene3d?.removeFrame(p.id); paintCount(); flatFrames(); if (host) castBitrate(); if (p.id === room.hostId && !left) toast('Ведущий вышел из зала'); },
       onEnd: (why) => { toast(why === 'kicked' ? 'Ведущий попросил вас выйти из зала' : 'Сеанс закончился'); leave(true); },
       onMessage: (p, m) => onMsg(p, m),
     });
@@ -373,7 +436,8 @@ export default function view(ctx, arg) {
 
     // ── messages between viewers ──
     function onMsg(p, m) {
-      if (m.k === 'open') { mesh.send(p.id, { k: 'hi', name: me.name, cam: camOn.v, seat: mySeat }); if (host) { if (filmState) mesh.send(p.id, stateMsg(false)); if (screenStream) mesh.send(p.id, { k: 'screen', id: screenStream.id }); } return; }
+      if (m.k === 'open') { mesh.send(p.id, { k: 'hi', name: me.name, cam: camOn.v, seat: mySeat }); if (host) { const cast = screenStream || castStream; if (filmState) mesh.send(p.id, stateMsg(false)); if (cast) { mesh.send(p.id, { k: 'screen', id: cast.id }); setTimeout(castBitrate, 2500); } } return; }
+      if (m.k === 'count') { if (p.id !== room.hostId || !Number.isFinite(m.at)) return; const at = mesh.localTime(p, m.at); if (Math.abs(at - Date.now()) < 15000) countdown(at); return; }
       if (m.k === 'hi' || m.k === 'state') { const v = viewers.get(p.id) || {}; if (m.name) { v.name = m.name; scene3d?.setName(p.id, m.name); } if ('cam' in m) { v.cam = m.cam; scene3d?.setCam(p.id, m.cam); } viewers.set(p.id, v); if (m.seat) { seats = { ...Object.fromEntries(Object.entries(seats).filter(([, x]) => x.uid !== p.id)), [m.seat]: { uid: p.id, name: v.name || '' } }; scene3d?.reseat(); } return; }
       if (m.k === 'film') return onFilm(p, m);
       if (m.k === 'screen') { screenId = m.id; const st = p.streams.get(m.id); if (st) scene3d?.setScreenStream(st); if (!m.id) scene3d?.setScreenStream(null); return; }
@@ -384,7 +448,7 @@ export default function view(ctx, arg) {
     }
 
     // ── the film clock: the host leads ──
-    const stateMsg = (beat) => ({ k: 'film', t: player?.time() || 0, playing: !!player?.playing(), rate: player?.rate() || 1, at: Date.now(), beat });
+    const stateMsg = (beat) => ({ k: 'film', t: player?.time() || 0, playing: !!player?.playing(), rate: player?.rate() || 1, at: Date.now(), beat, i: player?.index?.() ?? undefined });
     let beatT = null, applying = 0, last = null;
     function hostPlay() { player?.play(); setTimeout(() => { filmState = true; mesh.broadcast(stateMsg(false)); paintPlay(); }, 50); startBeat(); }
     function hostPause() { player?.pause(); setTimeout(() => { mesh.broadcast(stateMsg(false)); paintPlay(); }, 50); }
@@ -398,6 +462,7 @@ export default function view(ctx, arg) {
     function apply(m, hard) {
       const target = m.t + (m.playing ? ((Date.now() - m.localAt) / 1000) * (m.rate || 1) : 0), drift = Math.abs(player.time() - target);
       applying = Date.now() + 700;
+      if (Number.isInteger(m.i) && m.i >= 0 && player.index && player.index() >= 0 && player.index() !== m.i) { player.setIndex(m.i); paintPlay(); return; }   // a playlist: the host moved to another episode
       if (Math.abs(player.rate() - (m.rate || 1)) > 0.01) player.setRate(m.rate || 1);
       if (drift > (!m.playing ? 0.04 : hard ? 0.15 : 0.3)) player.seek(target);           // a pause lands on the same frame
       if (m.playing && !player.playing()) player.play(); else if (!m.playing && player.playing()) player.pause();
@@ -409,18 +474,53 @@ export default function view(ctx, arg) {
     function paintPlay() { playB.replaceChildren(ic(player?.playing() ? 'pause' : 'play')); }
     const tick = setInterval(() => { if (!player) return; const d = player.duration(), t = player.time(); timeL.textContent = d ? `${clock(t)} / ${clock(d)}` : clock(t); if (d && document.activeElement !== seek) seek.value = String(Math.round((t / d) * 1000)); scene3d?.setWaiting(!player.playing() && t < 0.5 ? waitingText() : ''); }, 500);
     function waitingText() { const ms = Date.parse(s.startsAt) - Date.now(); if (ms > 60000) return `Начало через ${ms > 3600e3 ? Math.floor(ms / 3600e3) + ' ч ' : ''}${Math.ceil((ms % 3600e3) / 60000)} мин`; return host ? 'Нажмите ▶, когда все соберутся' : 'Ждём, когда ведущий начнёт'; }
-    if (s.film.kind === 'screen' && !host) scene3d?.setWaiting('Ведущий скоро покажет экран');
+    if (kind === 'screen' && !host) scene3d?.setWaiting('Ведущий скоро покажет экран');
+    if (kind === 'file' && !host) scene3d?.setWaiting('Ведущий скоро включит фильм со своего Mac');
 
-    // ── screen sharing (film kind «screen») ──
+    // ── screen sharing (film kind «screen») and a file from the host's Mac (kind «file»): one live stream to everyone ──
+    const castBps = () => Math.max(600_000, Math.min(2_500_000, 12_000_000 / Math.max(1, mesh.peers.size)));
+    function castBitrate() {                                                            // the same rule as screen sharing, kept as people come and go
+      const cast = screenStream || castStream; if (!cast) return; const bps = castBps();
+      for (const p of mesh.peers.values()) for (const sd of p.senders?.get(cast.id) || []) { if (sd.track?.kind !== 'video') continue; const prm = sd.getParameters(); if (prm.encodings?.length) { prm.encodings[0].maxBitrate = bps; sd.setParameters(prm).catch(() => {}); } }
+    }
     async function share() {
       if (!navigator.mediaDevices?.getDisplayMedia) return toast('Показ экрана здесь недоступен');
       try { screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 30 } }, audio: true }); } catch { screenStream = null; return; }
       mesh.broadcast({ k: 'screen', id: screenStream.id });
-      mesh.addStream(screenStream, Math.max(600_000, Math.min(2_500_000, 12_000_000 / Math.max(1, mesh.peers.size))));
+      mesh.addStream(screenStream, castBps());
       screenStream.getVideoTracks()[0]?.addEventListener('ended', stopShare);
       scene3d?.setScreenStream(screenStream); screenB.classList.add('on');
     }
     function stopShare() { if (!screenStream) return; mesh.removeStream(screenStream); screenStream.getTracks().forEach((t) => t.stop()); mesh.broadcast({ k: 'screen', id: null }); screenStream = null; scene3d?.setScreenStream(null); screenB.classList.remove('on'); }
+    // the file plays here in a <video>; viewers get video.captureStream() (picture and sound) — it never leaves this Mac otherwise
+    function useFile(f) {
+      if (!f || left) return;
+      stopCast(); if (fileUrl) URL.revokeObjectURL(fileUrl);
+      picked.set(code, f); fileUrl = URL.createObjectURL(f); pickBox.classList.add('hide');
+      filmV.addEventListener('loadeddata', startCast, { once: true }); filmV.src = fileUrl;
+      if (s.film.src && fileName(f.name) !== s.film.src) toast(`Показываем «${fileName(f.name)}»`);
+    }
+    function startCast() {
+      if (left || castStream) return;
+      try { castStream = (filmV.captureStream || filmV.mozCaptureStream).call(filmV); } catch { castStream = null; return toast('Этот файл не получается передать зрителям'); }
+      if (!castStream.getTracks().length) { castStream = null; return toast('В файле нет дорожек, которые можно передать'); }
+      mesh.broadcast({ k: 'screen', id: castStream.id }); mesh.addStream(castStream, castBps());
+    }
+    function stopCast() { if (!castStream) return; mesh.removeStream(castStream); castStream.getTracks().forEach((t) => t.stop()); mesh.broadcast({ k: 'screen', id: null }); castStream = null; }
+    if (mine) { fileIn.onchange = () => useFile(fileIn.files?.[0]); const f = file || picked.get(code); if (f) useFile(f); else pickBox.classList.remove('hide'); }
+
+    // ── a player site: can we reach its <video>? If not, a shared countdown ──
+    let countT = null;
+    function paintReach(ok) {
+      siteHint.classList.toggle('hide', ok);
+      for (const el of [playB, seek, timeL, syncB]) el.classList.toggle('hide', !ok);
+    }
+    function countdown(at) {
+      clearInterval(countT); countBig.classList.remove('hide');
+      const step = () => { const ms = at - Date.now(); if (ms <= -1500) { clearInterval(countT); countBig.classList.add('hide'); return; }
+        countBig.textContent = ms > 0 ? String(Math.ceil(ms / 1000)) : 'Жмите ▶'; countBig.classList.toggle('go', ms <= 0); };
+      step(); countT = setInterval(step, 80);
+    }
 
     // ── talking, camera, chat, reactions ──
     const setTalk = (on) => { if (talk.v === on) return; talk.v = on; for (const t of local.getAudioTracks()) t.enabled = on; talkB.classList.toggle('on', on); mesh.broadcast({ k: 'talk', on }); scene3d?.setTalking(me.id, on); };
@@ -447,7 +547,7 @@ export default function view(ctx, arg) {
     // ── without WebGL: the film and the frames side by side ──
     function flatHall() {
       const box = h('div', { class: 'cn-flat' });
-      if (s.film.kind === 'video') { filmV.classList.add('cn-flat-film'); box.append(filmV); }
+      if (kind === 'video' || mine) { filmV.classList.add('cn-flat-film'); box.append(filmV); }
       box.append(h('div', { class: 'cn-flat-frames' })); return box;
     }
     function flatFrames() {
@@ -459,12 +559,13 @@ export default function view(ctx, arg) {
     const onVis = () => scene3d?.paused(document.hidden); document.addEventListener('visibilitychange', onVis);
     function leave(ended) {
       if (left) return; left = true;
-      clearInterval(beatT); clearInterval(tick); window.removeEventListener('keydown', keyDown); window.removeEventListener('keyup', keyUp); window.removeEventListener('pagehide', onUnload); document.removeEventListener('visibilitychange', onVis);
+      clearInterval(beatT); clearInterval(tick); clearInterval(countT); stopCast(); if (fileUrl) URL.revokeObjectURL(fileUrl); window.removeEventListener('keydown', keyDown); window.removeEventListener('keyup', keyUp); window.removeEventListener('pagehide', onUnload); document.removeEventListener('visibilitychange', onVis);
       mesh.leave(ended); stopShare(); local.getTracks().forEach((t) => t.stop()); local.stopFake?.();
       player?.destroy?.(); scene3d?.dispose(); hall = null;
-      if (alive) (host ? hostView(code) : home());
+      if (alive) (solo ? rehearsal() : host ? hostView(code) : home());
     }
-    window.__vitCinema = { mesh, get seats() { return seats; }, player: () => player && { t: player.time(), playing: player.playing() }, scene: () => scene3d?.debug?.(), hostPlay, hostPause };
+    window.__vitCinema = { mesh, get seats() { return seats; }, player: () => player && { t: player.time(), playing: player.playing(), reach: player.reachable?.() }, scene: () => scene3d?.debug?.(), hostPlay, hostPause,
+      cast: () => castStream && { id: castStream.id, tracks: castStream.getTracks().map((t) => `${t.kind}:${t.readyState}`) }, kind };
     return { destroy: () => leave(), leave };
   }
 
@@ -475,15 +576,61 @@ export default function view(ctx, arg) {
       onLocal: (f) => subs.push(f), destroy: () => { v.pause(); v.removeAttribute('src'); v.load(); } };
   }
   async function ytPlayer(box, src) {
-    const id = YT.exec(src)?.[1]; if (!id) return null; const holder = h('div'); box.append(holder);
+    const id = YT.exec(src)?.[1], q = (() => { try { return new URL(src).searchParams; } catch { return new URLSearchParams(); } })();
+    const list = /^[A-Za-z0-9_-]{10,64}$/.test(q.get('list') || '') ? q.get('list') : '', index = Math.max(1, parseInt(q.get('index') || '1', 10) || 1);
+    if (!id && !list) return null; const holder = h('div'); box.append(holder);
     if (!window.YT?.Player) await (window.__vitYT ||= new Promise((resolve, reject) => { const prev = window.onYouTubeIframeAPIReady; window.onYouTubeIframeAPIReady = () => { prev?.(); resolve(); }; const sc = document.createElement('script'); sc.src = 'https://www.youtube.com/iframe_api'; sc.onerror = () => { window.__vitYT = null; reject(new Error('YouTube не загрузился')); }; document.head.append(sc); }));
     return new Promise((resolve) => {
       const subs = []; let ready = false;
-      const y = new window.YT.Player(holder, { videoId: id, width: '100%', height: '100%', playerVars: { playsinline: 1, rel: 0, modestbranding: 1 }, events: { onReady: () => { ready = true; resolve(api2); }, onStateChange: (e) => { if (e.data === 1 || e.data === 2) subs.forEach((f) => f()); } } });
+      const y = new window.YT.Player(holder, { ...(id ? { videoId: id } : {}), width: '100%', height: '100%', playerVars: { playsinline: 1, rel: 0, modestbranding: 1, ...(list ? { listType: 'playlist', list } : {}) },
+        events: { onReady: () => { ready = true; if (!id && list && index > 1) y.cuePlaylist?.({ listType: 'playlist', list, index: index - 1 }); resolve(api2); }, onStateChange: (e) => { if (e.data === 1 || e.data === 2) subs.forEach((f) => f()); } } });
       const api2 = { time: () => y.getCurrentTime?.() || 0, duration: () => y.getDuration?.() || 0, playing: () => y.getPlayerState?.() === 1, rate: () => y.getPlaybackRate?.() || 1, play: () => y.playVideo?.(), pause: () => y.pauseVideo?.(),
-        seek: (t) => y.seekTo?.(Math.max(0, t), true), setRate: (r) => y.setPlaybackRate?.(r), setVolume: (v) => y.setVolume?.(v), onLocal: (f) => subs.push(f), destroy: () => { try { y.destroy(); } catch { /* gone */ } } };
+        seek: (t) => y.seekTo?.(Math.max(0, t), true), setRate: (r) => y.setPlaybackRate?.(r), setVolume: (v) => y.setVolume?.(v), onLocal: (f) => subs.push(f), destroy: () => { try { y.destroy(); } catch { /* gone */ } },
+        ...(list ? { index: () => { const i = y.getPlaylistIndex?.(); return Number.isInteger(i) ? i : -1; }, setIndex: (i) => y.playVideoAt?.(i) } : {}) };
       setTimeout(() => { if (!ready) resolve(api2); }, 12000);
     });
+  }
+  // A player site (Rutube, VK Video, Vimeo, Dailymotion, OK, any other) flat over the hall. In the app it is an Electron <webview>
+  // (its own session, no preload — electron/main.cjs), which ignores X-Frame-Options; the only thing ever run in the page is a
+  // read or a play/pause/seek/rate/volume on its first <video>, polled about once a second. Outside the app: an iframe, by countdown.
+  function sitePlayer(box, src, onReach) {
+    const subs = [], none = () => 0;
+    if (!inApp) {
+      const fr = h('iframe', { src, allow: 'autoplay; fullscreen; encrypted-media; picture-in-picture', allowfullscreen: true, referrerpolicy: 'strict-origin-when-cross-origin', title: 'Плеер сайта' });
+      box.append(fr);
+      setTimeout(() => onReach(false), 0);
+      return { time: none, duration: none, playing: () => false, rate: () => 1, play() {}, pause() {}, seek() {}, setRate() {}, setVolume() {}, onLocal() {}, reachable: () => false, destroy: () => fr.remove() };
+    }
+    const wv = document.createElement('webview'); wv.setAttribute('src', src); box.append(wv);
+    let st = { t: 0, p: true, r: 1, d: 0, at: performance.now() }, reach = null, misses = 0, ready = false, alive = true, vol = null, timer = 0;
+    wv.addEventListener('dom-ready', () => { ready = true; misses = 0; });
+    wv.addEventListener('did-start-navigation', (e) => { if (e.isMainFrame) { ready = false; misses = 0; } });
+    const num = (x) => (Number.isFinite(+x) ? String(+(+x).toFixed(3)) : '0');
+    const run = (code) => (ready ? wv.executeJavaScript(code, true).catch(() => null) : Promise.resolve(null));
+    const act = (body) => run(`(() => { const v = document.querySelector('video'); if (!v) return false; ${body}; return true; })()`);
+    const now = () => st.t + (st.p ? 0 : ((performance.now() - st.at) / 1000) * st.r);
+    async function poll() {
+      if (!alive) return;
+      const r = await run(`(() => { const v = document.querySelector('video'); return v ? { t: v.currentTime || 0, p: v.paused || v.ended, r: v.playbackRate || 1, d: Number.isFinite(v.duration) ? v.duration : 0 } : null; })()`);
+      if (!alive) return;
+      if (r && typeof r.t === 'number') {
+        const changed = reach === true && (r.p !== st.p || Math.abs(r.r - st.r) > 0.01 || Math.abs(r.t - now()) > 1.5);     // pressed or seeked in the page itself
+        st = { t: r.t, p: !!r.p, r: +r.r || 1, d: +r.d || 0, at: performance.now() }; misses = 0;
+        if (reach !== true) { reach = true; onReach(true); if (vol != null) act(`v.volume = ${num(vol)}`); }
+        if (changed) subs.forEach((f) => f());
+      } else if (++misses >= (ready ? 6 : 15) && reach !== false) { reach = false; onReach(false); }
+      timer = setTimeout(poll, 1000);
+    }
+    poll();
+    return {
+      time: now, duration: () => st.d, playing: () => !st.p, rate: () => st.r, reachable: () => reach === true,
+      play: () => { st = { ...st, t: now(), p: false, at: performance.now() }; act('const x = v.play(); if (x && x.catch) x.catch(() => {})'); },
+      pause: () => { st = { ...st, t: now(), p: true, at: performance.now() }; act('v.pause()'); },
+      seek: (t) => { st = { ...st, t: Math.max(0, +t || 0), at: performance.now() }; act(`v.currentTime = ${num(Math.max(0, +t || 0))}`); },
+      setRate: (x) => { st = { ...st, t: now(), r: +x || 1, at: performance.now() }; act(`v.playbackRate = ${num(+x || 1)}`); },
+      setVolume: (x) => { vol = Math.max(0, Math.min(1, (+x || 0) / 100)); act(`v.volume = ${num(vol)}`); },
+      onLocal: (f) => subs.push(f), destroy: () => { alive = false; clearTimeout(timer); wv.remove(); },
+    };
   }
 
   // ── the auditorium in three.js ───────────────────────────────────────────
@@ -535,7 +682,7 @@ export default function view(ctx, arg) {
     mirror(idle);
     const glowGeo = keep(new THREE.PlaneGeometry(W * 1.25, H * 1.35)); const glowMat = keep(new THREE.MeshBasicMaterial({ color: 0x6070ff, transparent: true, opacity: 0.06, blending: THREE.AdditiveBlending, depthWrite: false }));
     const glow = new THREE.Mesh(glowGeo, glowMat); glow.position.set(0, SCREEN_Y, SCREEN_Z - 0.05); scene.add(glow);
-    let filmTex = null, screenTex = null, waitTex = null;
+    let filmTex = null, screenTex = null, waitTex = null, screenV = null, screenVol = +(store.get('vit.cinema.vol') || 0.9);
     function setFilm(video) { filmTex?.dispose(); filmTex = video ? mirror(new THREE.VideoTexture(video)) : null; paintScreen(); }
     function paintScreen() { screenMat.map = screenTex || (waitTex && !screenTex ? waitTex : null) || filmTex || idle; screenMat.needsUpdate = true; }
 
@@ -661,7 +808,9 @@ export default function view(ctx, arg) {
       reseat: () => { paintChairs(); for (const f of frames.values()) placeFrame(f); },
       moveTo: (id) => { mySeatNow = id; eyeT.copy(seatEye(id)); paintChairs(); },
       react,
-      setScreenStream: (stream) => { screenTex?.dispose(); screenTex = null; if (stream) { const v = document.createElement('video'); v.autoplay = true; v.muted = false; v.playsInline = true; v.srcObject = stream; v.play().catch(() => {}); screenTex = mirror(new THREE.VideoTexture(v)); } paintScreen(); },
+      setScreenStream: (stream) => { screenTex?.dispose(); screenTex = null; if (screenV) { screenV.srcObject = null; screenV = null; }
+        if (stream) { const v = document.createElement('video'); v.autoplay = true; v.muted = false; v.playsInline = true; v.volume = screenVol; v.srcObject = stream; v.play().catch(() => {}); screenV = v; screenTex = mirror(new THREE.VideoTexture(v)); } paintScreen(); },
+      setScreenVolume: (x) => { screenVol = Math.max(0, Math.min(1, +x || 0)); if (screenV) screenV.volume = screenVol; },
       setWaiting: (text) => { const key = text || ''; if (key === (waitTex?.userData.key || '')) return; waitTex?.dispose(); waitTex = key && !screenTex ? mirror(idleTexture(THREE, key, s.title)) : null; if (waitTex) waitTex.userData.key = key; paintScreen(); },
       paused: (p) => { paused = p; if (!p && !raf) loop(); },
       look: (y, p) => { yawT = y; pitchT = p; },
