@@ -119,7 +119,8 @@ const LAYOUT = {
     const nav = h('div', { class: 'sp-nav' }, h('button', { class: 'sp-burger', 'aria-label': 'Тематика', title: 'Тематика', onclick: (e) => { e.stopPropagation(); themeSheet(); } }, h('i'), h('i'), h('i')),
       h('div', { class: 'sp-pills' }, [['home', 'Главная'], ['vit', 'VIT'], ['memory', 'Память']].map(([id, t]) => h('button', { class: id === 'home' ? 'on' : '', onclick: (e) => { e.stopPropagation(); if (id !== 'home') ctx.go(id); } }, t))),
       h('button', { class: 'sp-contact', onclick: (e) => { e.stopPropagation(); ctx.go('settings'); } }, 'Профиль'));
-    function paintList() { list.replaceChildren(...WORLDS.map((x, i) => h('button', { class: 'sp-row' + (i === sel ? ' on' : ''), onclick: () => pick(i), ondblclick: () => ctx.go(x.id) }, thumb(x.id), h('span', null, h('b', null, x.name), h('small', null, info[x.id] || x.cap)), icon('chev')))); }
+    function paintList() { list.replaceChildren(...WORLDS.map((x, i) => h('button', { class: 'sp-row' + (i === sel ? ' on' : ''), onclick: () => pick(i), ondblclick: () => ctx.go(x.id) }, thumb(x.id), h('span', null, h('b', null, x.name), h('small', null, info[x.id] || x.cap)), icon('chev'))));
+      requestAnimationFrame(() => list.querySelector('.sp-row.on')?.scrollIntoView({ block: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })); }
     function paint() { const w = WORLDS[sel], nx = WORLDS[(sel + 1) % WORLDS.length]; orbs.splice(0).forEach((o) => o.stop());
       const pic = picture(w.id, orbs, { live: true, size: 900, points: 15000, interactive: true }), text = h('h2', null, HEAD[w.id][0], h('br'), HEAD[w.id][1]);
       hero.replaceChildren(pic, h('div', { class: 'sp-shade' }), nav, text,
@@ -136,7 +137,12 @@ const LAYOUT = {
       h('div', { class: 'sp-col' }, h('div', { class: 'sp-tile sp-list' }, h('div', { class: 'sp-list-head' }, h('b', null, 'Миры'), h('button', { class: 'sp-i', 'aria-label': 'Помощь', onclick: () => ctx.go('settings', { tab: 'help' }) }, 'i')), list, open),
         h('button', { class: 'sp-tile sp-explore', onclick: (e) => ctx.go('vit', undefined, e.currentTarget) }, h('img', { src: '/media/portal.jpg', alt: '' }), h('span', null, 'Спросить VIT')))));
     paint();
-    return () => { alive = false; };
+    // ↑ ↓ walk the worlds, Enter opens the chosen one — like the list in a visionOS window
+    const keys = (e) => { if (!root.isConnected || e.target.closest?.('input, textarea, [contenteditable]')) return;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); pick((sel + (e.key === 'ArrowDown' ? 1 : -1) + WORLDS.length) % WORLDS.length); }
+      else if (e.key === 'Enter') { e.preventDefault(); ctx.go(WORLDS[sel].id, undefined, hero); } };
+    window.addEventListener('keydown', keys);
+    return () => { alive = false; window.removeEventListener('keydown', keys); };
   },
   // Nature-Treks wall: the worlds stand side by side on a curved wall over dark water, the VITON13 globe of dust hangs above.
   ribbon(root, ctx, orbs) {

@@ -187,3 +187,9 @@ body.desktop .home-spatial { -webkit-app-region: drag; } body.desktop .sp-win { 
 .ph-stat b { display: block; font-size: 20px; font-weight: 700; letter-spacing: -0.02em; margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ph-stat span { display: block; font-size: 12px; color: rgba(245, 245, 247, 0.5); margin-top: 2px; }
 .ph-stat:active { transform: scale(0.97); transition: transform 0.12s; }
+
+/* the worlds list scrolls now that there are fifteen: wheel and trackpad, soft fade at the edges, no scrollbar */
+.sp-rows { overflow-y: auto; justify-content: flex-start; overscroll-behavior: contain; scroll-snap-type: y proximity; scrollbar-width: none; padding: 4px 0 18px;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14px, #000 calc(100% - 34px), transparent 100%); mask-image: linear-gradient(to bottom, transparent 0, #000 14px, #000 calc(100% - 34px), transparent 100%); }
+.sp-rows::-webkit-scrollbar { display: none; }
+.sp-row { flex: none; scroll-snap-align: start; scroll-margin: 10px 0; transition: background 0.25s cubic-bezier(0.16, 1, 0.3, 1), color 0.25s, transform 0.25s cubic-bezier(0.16, 1, 0.3, 1); }
