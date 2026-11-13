@@ -214,3 +214,7 @@
 :root[data-theme="aurora"] .mu-pill.solid { color: #fff !important; }
 @media (max-width: 760px) { .mu-stores { grid-template-columns: 1fr; } .mu-upq-i { grid-template-columns: minmax(0, 1fr) 70px; } .mu-upq-bar { display: none; } .mu-brand { display: none; } }
 :root[data-theme="aurora"] .mu-place.cloud, :root[data-theme="aurora"] .mu-place.both, :root[data-theme="aurora"] .mu-store-ic.on { color: #0a72e0; } :root[data-theme="aurora"] .mu-meter i { background: #0a84ff; }
+
+/* «Показать в Finder» under «На этом Mac» */
+.mu-link-btn { display: block; margin-top: 4px; font-size: 12.5px; font-weight: 600; color: var(--accent); padding: 0; background: none; }
+.mu-link-btn:hover { text-decoration: underline; }

@@ -266,7 +266,8 @@ export default function view(ctx) {
       const list = [...d.items, ...(c?.state === 'ready' ? c.items : [])];
       const macBytes = d.items.reduce((n, t) => n + (t.size || 0), 0);
       const macCard = h('div', { class: 'mu-store' }, h('span', { class: 'mu-store-ic' }, ic('mac')), h('div', null, h('b', null, 'На этом Mac'),
-        h('small', null, d.items.length ? `${d.items.length} ${plural(d.items.length, 'трек', 'трека', 'треков')} · ${MB(macBytes)} · бесплатно` : 'Бесплатно, без ограничений по времени')));
+        h('small', null, (d.items.length ? `${d.items.length} ${plural(d.items.length, 'трек', 'трека', 'треков')} · ${MB(macBytes)} · ` : '') + 'папка «Музыка → VIT Music», бесплатно'),
+        h('button', { class: 'mu-link-btn', onclick: () => api('/api/music/up/reveal', { body: {} }).catch((e) => toast(e.message)) }, 'Показать в Finder')));
       let cloudCard;
       if (!d.cloudAllowed) cloudCard = h('button', { class: 'mu-store locked', onclick: () => ctx.upgrade('music-upload') }, h('span', { class: 'mu-store-ic' }, ic('cloud')),
         h('div', null, h('b', null, 'В облаке VITON13'), h('small', null, 'С подпиской VIT: ваша музыка в интернете и на всех устройствах')));
@@ -354,7 +355,7 @@ export default function view(ctx) {
   }
   function saveFile(t) { const a = h('a', { href: `/api/music/up/${t.id}?download=1`, download: t.name || t.title }); document.body.append(a); a.click(); a.remove(); }
   async function removeTrack(t, where) {
-    const q = where === 'cloud' ? `Удалить «${t.title}» из облака VITON13?${t.place === 'both' ? ' На этом Mac он останется.' : ''}` : `Удалить «${t.title}» с этого Mac?${t.place === 'both' ? ' В облаке он останется.' : ''}`;
+    const q = where === 'cloud' ? `Удалить «${t.title}» из облака VITON13?${t.place === 'both' ? ' На этом Mac он останется.' : ''}` : `Убрать «${t.title}» с этого Mac? Файл уйдёт в Корзину.${t.place === 'both' ? ' В облаке он останется.' : ''}`;
     if (!confirm(q)) return;
     try { if (where === 'cloud') await api(`/api/music/cloud/${t.cloud}`, { method: 'DELETE' }); else { await api(`/api/music/up/${t.id}`, { method: 'DELETE' }); data.upCount = Math.max(0, (data.upCount || 1) - 1); }
       paintNav(); render(); } catch (e) { toast(e.message); }
@@ -488,3 +489,4 @@ export default function view(ctx) {
   api('/api/music/up').then((d) => { data.upCount = d.items.length; paintNav(); }).catch(() => {});
   return { root, destroy() { alive = false; off(); pop?.remove(); clearTimeout(st); window.removeEventListener('keydown', onKey); } };     // the music keeps playing
 }
+

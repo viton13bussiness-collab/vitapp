@@ -214,12 +214,28 @@ const ownList = (user, id) => one('SELECT * FROM music_playlists WHERE id = ? AN
 const safe = async (fn, fallback) => { try { return await fn(); } catch (e) { if (e.user) throw e; console.error('[music]', e.message); return fallback; } };
 
 // ── VIT Music: the person's own tracks ──────────────────────────────────────
-// Level one — «На этом Mac»: the file lives in DATA/music-uploads/<user>/, free, nothing leaves the computer.
+// Level one — «На этом Mac»: the track is an ordinary file in ~/Music/VIT Music («Музыка → VIT Music» in Finder) — the person's own
+// file, named «Исполнитель — Название», seen by Finder and other players; the app keeps only a row and a small cover. Free, nothing leaves
+// the computer, and the app itself stays small. (Tracks added before 13 Nov lived in DATA/music-uploads/<user>/ and move there on start.)
 // Level two — «В облаке VITON13»: a private copy in viton13.com's storage (site-patch/music-cloud), so the track is on
 // the internet and on every device with this VITON ID. Cloud is part of the subscription (whatever spends gigabytes is paid).
 const UP_MAX = 50 * 1024 * 1024, COVER_MAX = 2 * 1024 * 1024;
 const UP_ROOT = path.join(DATA, 'music-uploads');
-const upDir = (user) => { const d = path.join(UP_ROOT, String(user.id).replace(/[^\w-]/g, '_')); fs.mkdirSync(d, { recursive: true }); return d; };
+const upDir = (user) => { const d = path.join(UP_ROOT, String(user.id).replace(/[^\w-]/g, '_')); fs.mkdirSync(d, { recursive: true }); return d; };   // covers only
+const LIB = path.resolve(process.env.VIT_MUSIC_DIR || path.join(os.homedir(), 'Music', 'VIT Music'));
+const libDir = () => { fs.mkdirSync(LIB, { recursive: true }); return LIB; };
+/** Where a track's audio is: an absolute path inside the VIT Music folder, or (older rows) a name in the data folder. */
+const fileOf = (user, r) => { if (path.isAbsolute(r.file)) { const f = path.resolve(r.file); return f.startsWith(LIB + path.sep) ? f : null; } return path.join(upDir(user), path.basename(r.file)); };
+const safeName = (s) => String(s || '').replace(/[\/\\:*?"<>|\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120);
+function freeName(base, ext) { const dir = libDir(); let name = `${base}.${ext}`; for (let i = 2; fs.existsSync(path.join(dir, name)); i++) name = `${base} (${i}).${ext}`; return path.join(dir, name); }
+/** A file the person removes goes to the Trash, not into nothing. */
+// tracks added before the folder existed move into it once, under readable names
+try { for (const r of all('SELECT * FROM music_uploads')) { if (path.isAbsolute(r.file)) continue;
+  const from = path.join(UP_ROOT, String(r.user).replace(/[^\w-]/g, '_'), path.basename(r.file)); if (!fs.existsSync(from)) continue;
+  const to = freeName(safeName(r.artist ? `${r.artist} — ${r.title}` : r.title) || r.id, r.file.split('.').pop());
+  try { fs.renameSync(from, to); } catch { fs.copyFileSync(from, to); fs.rmSync(from, { force: true }); }
+  run('UPDATE music_uploads SET file = ? WHERE id = ?', to, r.id); } } catch (e) { console.error('[music] moving tracks into ~/Music/VIT Music:', e.message); }
+function toTrash(file) { try { const t = path.join(os.homedir(), '.Trash'); fs.mkdirSync(t, { recursive: true }); let to = path.join(t, path.basename(file)); if (fs.existsSync(to)) to = path.join(t, Date.now() + ' ' + path.basename(file)); fs.renameSync(file, to); } catch { fs.rmSync(file, { force: true }); } }
 const upRow = (user, id) => (/^[\w-]{6,40}$/.test(String(id)) ? one('SELECT * FROM music_uploads WHERE id = ? AND user = ?', String(id), user.id) : null);
 const AUDIO_TYPES = { mp3: 'audio/mpeg', m4a: 'audio/mp4', aac: 'audio/aac', flac: 'audio/flac', wav: 'audio/wav', ogg: 'audio/ogg' };
 /** What the bytes really are — the extension does not count. */
@@ -278,21 +294,24 @@ function saveCover(user, r, bytes, ext) {
   run('UPDATE music_uploads SET cover = ? WHERE id = ?', name, r.id); return name;
 }
 function addLocal(user, bytes, ext, { name, title, artist, album, duration, cloud = null, coverBytes = null, coverExt = null }) {
-  const id = crypto.randomBytes(9).toString('base64url'), dir = upDir(user), file = `${id}.${ext}`;
-  fs.writeFileSync(path.join(dir, file), bytes);
+  const id = crypto.randomBytes(9).toString('base64url'), tmp = path.join(libDir(), `.vit-${id}.${ext}`);
+  fs.writeFileSync(tmp, bytes);
   let tags = {};
-  if (ext === 'mp3') { tags = id3(path.join(dir, file)); const c = cover(path.join(dir, file)); if (c && !coverBytes) { coverBytes = c.data; coverExt = c.mime === 'image/png' ? 'png' : 'jpg'; } }
+  if (ext === 'mp3') { tags = id3(tmp); const c = cover(tmp); if (c && !coverBytes) { coverBytes = c.data; coverExt = c.mime === 'image/png' ? 'png' : 'jpg'; } }
   else if (ext === 'm4a') { tags = mp4tags(bytes); if (tags.cover && !coverBytes) { coverBytes = tags.cover.data; coverExt = tags.cover.ext; } }
   const base = String(name || 'Трек').replace(/\.[a-z0-9]{2,5}$/i, '').replace(/^\d+\s*[-.]?\s*/, '').trim();
+  const t0 = title || tags.title || base || 'Без названия', a0 = artist || tags.artist || '';
+  const file = freeName(safeName(a0 ? `${a0} — ${t0}` : t0) || id, ext); fs.renameSync(tmp, file);
   run('INSERT INTO music_uploads (id, user, name, file, type, size, title, artist, album, duration, cover, cloud, created) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    id, user.id, clip(name || file, 160), file, AUDIO_TYPES[ext], bytes.length, clip(title || tags.title || base || 'Без названия', 120), clip(artist || tags.artist || '', 90), clip(album || tags.album || '', 90),
+    id, user.id, clip(name || path.basename(file), 160), file, AUDIO_TYPES[ext], bytes.length, clip(t0, 120), clip(a0, 90), clip(album || tags.album || '', 90),
     Math.max(0, Math.min(1e5, Number(duration) || 0)), null, cloud, now());
   const r = one('SELECT * FROM music_uploads WHERE id = ?', id);
   if (coverBytes && coverBytes.length <= COVER_MAX && sniffImage(coverBytes)) saveCover(user, r, coverBytes, coverExt || sniffImage(coverBytes));
   return one('SELECT * FROM music_uploads WHERE id = ?', id);
 }
 function removeLocal(user, r) {
-  const dir = upDir(user); for (const f of [r.file, r.cover]) if (f) fs.rmSync(path.join(dir, path.basename(f)), { force: true });
+  const audio = fileOf(user, r); if (audio && fs.existsSync(audio)) (path.isAbsolute(r.file) ? toTrash(audio) : fs.rmSync(audio, { force: true }));
+  if (r.cover) fs.rmSync(path.join(upDir(user), path.basename(r.cover)), { force: true });
   run('DELETE FROM music_uploads WHERE id = ?', r.id);
 }
 
@@ -317,7 +336,7 @@ async function cloud(user, method, p, body) {
 }
 const cloudErr = (e, json) => json(e.http || 500, { ok: false, code: e.code || 'site', message: e.message });
 async function cloudUpload(user, r) {
-  const bytes = fs.readFileSync(path.join(upDir(user), r.file));
+  const bytes = fs.readFileSync(fileOf(user, r));
   const d = await cloud(user, 'POST', '/uploads', { name: r.name, type: r.type, size: r.size, title: r.title, artist: r.artist, album: r.album, duration: r.duration });
   if (!d.track?.id || !okHost(d.uploadUrl)) throw Object.assign(new Error('Облако дало странный адрес загрузки'), { http: 502 });
   const put = await fetch(d.uploadUrl, { method: 'PUT', headers: { 'content-type': r.type, 'content-length': String(bytes.length) }, body: bytes, signal: AbortSignal.timeout(300000) }).catch(() => null);
@@ -385,7 +404,12 @@ export async function handle({ req, res, url, user, seg, method, json, fail, bod
 
   // ── VIT Music: own tracks on this Mac ──
   if (p[0] === 'up') {
-    if (method === 'GET' && p[1] && !p[2]) { const r = upRow(user, p[1]); const full = r && path.join(upDir(user), r.file); if (!r || !fs.existsSync(full)) { res.writeHead(404); res.end(); return true; } sendUpload(req, res, full, r, sp.get('download') === '1'); return true; }
+    if (method === 'POST' && p[1] === 'reveal') {                                  // «Показать в Finder»: the folder, or one track in it
+      if (user.plan === 'guest') { fail(402, 'Своя музыка — с VITON ID'); return true; }
+      const b = await body(), r = b.id ? upRow(user, b.id) : null, f = r ? fileOf(user, r) : libDir();
+      const { execFile } = await import('node:child_process'); execFile('open', r && f ? ['-R', f] : [libDir()], () => {});
+      json(200, { ok: true, folder: LIB }); return true; }
+    if (method === 'GET' && p[1] && !p[2]) { const r = upRow(user, p[1]); const full = r && fileOf(user, r); if (!r || !full || !fs.existsSync(full)) { res.writeHead(404); res.end(); return true; } sendUpload(req, res, full, r, sp.get('download') === '1'); return true; }
     if (method === 'GET' && p[1] && p[2] === 'cover') { const r = upRow(user, p[1]); const full = r?.cover && path.join(upDir(user), path.basename(r.cover));
       if (!full || !fs.existsSync(full)) { res.writeHead(404); res.end(); return true; }
       res.writeHead(200, { 'content-type': IMAGE_TYPES[full.split('.').pop()] || 'image/jpeg', 'cache-control': 'max-age=86400', 'x-content-type-options': 'nosniff' }); fs.createReadStream(full).pipe(res); return true; }
