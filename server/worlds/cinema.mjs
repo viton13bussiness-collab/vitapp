@@ -9,6 +9,7 @@ import dns from 'node:dns/promises';
 import net from 'node:net';
 import { siteCall, siteStatus, siteMode, SITE } from './messages.mjs';
 import { can } from '../plan.mjs';
+import { iceServers } from '../turn.mjs';
 
 const CODE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/, KEY = /^[A-Z0-9]{4}$/, MEMBER = /^[A-Za-z0-9_-]{1,128}$/, CURSOR = /^[0-9TZ:.#a-z-]{10,40}$/, SEAT = /^R\d{1,2}S\d{1,2}$/;
 const TYPES = new Set(['offer', 'answer', 'candidate', 'bye']);
@@ -24,12 +25,6 @@ const CODES = {
   NO_SEAT: 'Сначала выберите место', INVALID_REQUEST: 'Некорректный запрос',
 };
 
-function iceServers() {
-  const list = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }, { urls: 'stun:stun.cloudflare.com:3478' }];
-  const url = String(process.env.VIT_TURN_URL || '').trim();
-  if (/^turns?:/.test(url)) list.push({ urls: url.split(',').map((s) => s.trim()).filter(Boolean), username: process.env.VIT_TURN_USER || '', credential: process.env.VIT_TURN_PASS || '' });
-  return list;
-}
 
 // ── the film proxy ──────────────────────────────────────────────────────────
 const devSite = (() => { try { const u = new URL(SITE); return /^(www\.)?viton13\.com$/.test(u.hostname) ? null : u.origin; } catch { return null; } })();

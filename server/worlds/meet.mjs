@@ -6,6 +6,7 @@
 // reusing the site session the messenger already holds (server/worlds/messages.mjs).
 import { siteCall, siteStatus, siteMode } from './messages.mjs';
 import { can } from '../plan.mjs';
+import { iceServers } from '../turn.mjs';
 
 const CODE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/, MEMBER = /^[A-Za-z0-9_-]{1,128}$/, CURSOR = /^[0-9TZ:.#a-z-]{10,40}$/;
 const TYPES = new Set(['offer', 'answer', 'candidate', 'bye']);
@@ -16,12 +17,6 @@ const CODES = {
 };
 
 /** STUN is free and public; a relay (TURN) helps the networks STUN can't cross and is added only when configured. */
-function iceServers() {
-  const list = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }, { urls: 'stun:stun.cloudflare.com:3478' }];
-  const url = String(process.env.VIT_TURN_URL || '').trim();
-  if (/^turns?:/.test(url)) list.push({ urls: url.split(',').map((s) => s.trim()).filter(Boolean), username: process.env.VIT_TURN_USER || '', credential: process.env.VIT_TURN_PASS || '' });
-  return list;
-}
 
 export async function handle({ url, user, seg, method, json, fail, body }) {
   if (seg[1] !== 'meet') return false;
