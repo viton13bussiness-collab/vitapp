@@ -31,6 +31,7 @@ export const ICON = {
   grid: '<circle cx="6.5" cy="6.5" r="2"/><circle cx="12" cy="6.5" r="2"/><circle cx="17.5" cy="6.5" r="2"/><circle cx="6.5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="17.5" cy="12" r="2"/><circle cx="6.5" cy="17.5" r="2"/><circle cx="12" cy="17.5" r="2"/><circle cx="17.5" cy="17.5" r="2"/>',
   meet: '<rect x="3" y="6" width="13" height="12" rx="3"/><path d="M16 10.5l5-3v9l-5-3"/>',
   cinema: '<rect x="3.5" y="5.5" width="17" height="11" rx="2.5"/><path d="M6 20c1.6-1.4 3.6-2 6-2s4.4.6 6 2"/>',
+  ai: '<rect x="3.5" y="5" width="7.5" height="14" rx="2"/><rect x="13" y="5" width="7.5" height="14" rx="2"/>',
   hub: '<rect x="4.500" y="4.500" width="6" height="6" rx="1.800"/><rect x="13.500" y="4.500" width="6" height="6" rx="1.800"/><rect x="4.500" y="13.500" width="6" height="6" rx="1.800"/><rect x="13.500" y="13.500" width="6" height="6" rx="1.800"/>',
   frames: '<rect x="3.500" y="5" width="11.500" height="14" rx="2.500"/><path d="M18 7.500h1a1.500 1.500 0 011.500 1.500v6a1.500 1.500 0 01-1.500 1.500h-1"/>',
   help: '<circle cx="12" cy="12" r="8.500"/><path d="M9.700 9.700a2.400 2.400 0 114 1.800c-.900.700-1.700 1.200-1.700 2.300M12 16.700v.2"/>',

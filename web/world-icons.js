@@ -15,6 +15,7 @@ export const WORLD_ICONS = {
   messages: disc('ms', '#30d158', (c, p) => `<path d="M30 36h40a6 6 0 0 1 6 6v16a6 6 0 0 1-6 6H46l-10 8v-8h-6a6 6 0 0 1-6-6V42a6 6 0 0 1 6-6z"/>${dot(62, 50, c, p, 3)}`),
   meet: disc('mt', '#30d158', (c, p) => `<rect x="26" y="34" width="34" height="32" rx="8"/><path d="M60 46l14-8v24l-14-8"/>${dot(43, 50, c, p)}`),
   cinema: disc('cn', '#e9c27a', (c, p) => `<path d="M28 40c14-6 30-6 44 0v20c-14-6-30-6-44 0z"/><path d="M34 70h32" stroke-opacity=".5"/>${dot(50, 50, c, p, 3)}`),
+  ai: disc('ai', '#bf5af2', (c, p) => `<circle cx="50" cy="50" r="20"/><path d="M30 50h40M50 30v40" stroke-opacity=".35"/>${dot(64, 36, c, p)}`),
   music: disc('mu', '#ff375f', (c, p) => `<path d="M34 58V42M44 66V34M54 60V40M64 54V46" />${dot(72, 50, c, p, 3)}`),
   browser: disc('mr', '#0a84ff', (c, p) => `<circle cx="50" cy="50" r="22"/><ellipse cx="50" cy="50" rx="9" ry="22" stroke-opacity=".5"/><path d="M28 50h44" stroke-opacity=".5"/>${dot(50, 28, c, p)}`),
   budget: disc('bu', '#34e0a1', (c, p) => `<path d="M30 66h40"/><path d="M36 58v-8M46 58V44M56 58V38" />${dot(66, 32, c, p)}`),

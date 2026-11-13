@@ -49,10 +49,10 @@ function face() {
 // ── shell ───────────────────────────────────────────────────────────────────
 const WORLD_TABS = [['home', 'Главная'], ['vit', 'VIT'], ['brain', 'Мозг'], ['messages', 'Сообщения'], ['music', 'VIT Music'], ['browser', 'Meridian']];
 // every world, as round icons in the «Все миры» grid (visionOS home); the bar keeps the six used most
-const ALL_WORLDS = [['vit', 'VIT', '#5e5ce6', '#bf5af2'], ['brain', 'Мозг', '#3a2a8f', '#64d2ff'], ['messages', 'Сообщения', '#30d158', '#0a84ff'], ['meet', 'Встречи', '#30d158', '#0a84ff'], ['cinema', 'Кинотеатр', '#e9c27a', '#5e5ce6'], ['music', 'VIT Music', '#ff375f', '#ff9f0a'], ['browser', 'Meridian', '#0a84ff', '#64d2ff'],
+const ALL_WORLDS = [['vit', 'VIT', '#5e5ce6', '#bf5af2'], ['brain', 'Мозг', '#3a2a8f', '#64d2ff'], ['messages', 'Сообщения', '#30d158', '#0a84ff'], ['meet', 'Встречи', '#30d158', '#0a84ff'], ['cinema', 'Кинотеатр', '#e9c27a', '#5e5ce6'], ['ai', 'Нейросети', '#bf5af2', '#0a84ff'], ['music', 'VIT Music', '#ff375f', '#ff9f0a'], ['browser', 'Meridian', '#0a84ff', '#64d2ff'],
   ['budget', 'Бюджет', '#34c759', '#a2e635'], ['apps', 'Приложения', '#636366', '#0a84ff'], ['journal', 'VJOURNAL', '#a2845e', '#e8d5b0'], ['store', 'Store', '#ff9f0a', '#ff375f'], ['medicine', 'Медицина', '#ff453a', '#ff8a80'], ['hub', 'Hub', '#5856d6', '#5ac8fa'], ['settings', 'Настройки', '#48484a', '#8e8e93']];
 const VIT_TABS = [['vit', 'Диалог'], ['memory', 'Память'], ['works', 'Работы'], ['requests', 'Заявки'], ['agents', 'Агенты']];
-const WORLDS = new Set(['brain', 'messages', 'meet', 'cinema', 'music', 'budget', 'browser', 'apps', 'journal', 'store', 'medicine', 'hub']), VIT_GROUP = new Set(VIT_TABS.map(([id]) => id));
+const WORLDS = new Set(['ai', 'brain', 'messages', 'meet', 'cinema', 'music', 'budget', 'browser', 'apps', 'journal', 'store', 'medicine', 'hub']), VIT_GROUP = new Set(VIT_TABS.map(([id]) => id));
 const KNOWN = new Set(['home', 'settings', ...VIT_GROUP, ...WORLDS]);
 let miniEl, miniOff = null, main, sub, tabsEl, moreEl, vitView, current = null, tabEls = {}, subEls = {}, booted = false;
 const ctx = () => ({ h, icon, api, toast, when, md, css, esc, me: S.me, plan: S.me?.plan || 'guest', upgrade, theme: getTheme, go: (v, arg, from) => go(v, false, arg, from), askVit: (text) => { go('vit'); vitView.send(text); } });
