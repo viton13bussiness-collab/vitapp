@@ -1,0 +1,9 @@
+Copyright (c) 2026 VITON13. All rights reserved.
+
+VITAPP (the VITON13 app) is published so people can read the code and see how it works.
+Publishing it does not grant a licence: copying, modifying, distributing or running it as
+a service, in whole or in part, needs written permission from VITON13 (info@viton13.com).
+
+Third-party parts keep their own licences — three.js, marked, DOMPurify, Fuse.js and the other
+libraries in web/vendor (see the licence files next to them) — and the images listed in
+web/media/SOURCES.md keep the terms written there.
